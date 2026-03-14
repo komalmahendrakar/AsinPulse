@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useUser, useFirestore, useCollection } from "@/firebase";
+import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
+
+const PLAN_LIMITS: Record<string, number> = {
+  starter: 100,
+  agency: 500,
+  enterprise: 1000,
+};
 
 export default function AsinsPage() {
   const { user } = useUser();
@@ -26,6 +32,12 @@ export default function AsinsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const userDocRef = useMemoFirebase(() => {
+    if (!firestore || !user?.uid) return null;
+    return doc(firestore, "users", user.uid);
+  }, [firestore, user?.uid]);
+  const { data: profile } = useDoc(userDocRef);
+
   const asinsQuery = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
     return query(
@@ -36,6 +48,10 @@ export default function AsinsPage() {
   }, [firestore, user?.uid]);
 
   const { data: asins, loading } = useCollection(asinsQuery);
+
+  const currentPlan = profile?.subscription_plan || "starter";
+  const currentLimit = PLAN_LIMITS[currentPlan] || 100;
+  const currentCount = asins?.length || 0;
 
   const handleSyncAll = async () => {
     if (!firestore || !user?.uid || !user?.email || !asins || asins.length === 0) return;
@@ -50,7 +66,6 @@ export default function AsinsPage() {
       let alertsCount = 0;
 
       for (const item of asins) {
-        // 1. Fetch Signal (Simulated)
         const isOutOfStock = Math.random() > 0.85;
         const buyBoxLost = Math.random() > 0.9;
         const priceHike = Math.random() > 0.92;
@@ -79,7 +94,6 @@ export default function AsinsPage() {
           }));
         });
 
-        // 2. Performance Audit
         const dailyAverage = 50;
         const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
         const todaySales = hasIssue 
@@ -102,7 +116,6 @@ export default function AsinsPage() {
           }));
         });
 
-        // 3. Root Cause Logic
         if (todaySales < (dailyAverage * 0.7)) {
           let reason = "SALES_VELOCITY_DROP";
           
@@ -130,7 +143,6 @@ export default function AsinsPage() {
              }));
           });
 
-          // Queue Alert Email
           const mailData = {
             to: user.email,
             message: {
@@ -151,16 +163,13 @@ export default function AsinsPage() {
         }
       }
 
-      // Update Last Sync on User profile
       updateDoc(doc(firestore, "users", user.uid), {
         last_sync_at: serverTimestamp()
-      }).catch(async () => {
-        // Silently fail or log update error
       });
 
       toast({
         title: "Simulation Complete",
-        description: `Audited ${asins.length} ASINs. Detected ${alertsCount} operational issues and queued alerts.`,
+        description: `Audited ${asins.length} ASINs. Detected ${alertsCount} operational issues.`,
       });
     } catch (error) {
       console.error("Sync failed", error);
@@ -171,6 +180,17 @@ export default function AsinsPage() {
 
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
+    
+    // Limit Check
+    if (currentCount + asinList.length > currentLimit) {
+      toast({
+        variant: "destructive",
+        title: "Limit Exceeded",
+        description: "ASIN limit reached for your subscription plan.",
+      });
+      return;
+    }
+
     setIsAdding(true);
     try {
       const promises = asinList.map(async (code) => {
@@ -218,6 +238,32 @@ export default function AsinsPage() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row gap-6">
         <div className="w-full md:w-1/3 space-y-6">
+          <Card className="border-accent/20 bg-accent/5 overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-bold uppercase tracking-widest text-accent">Quota Usage</CardTitle>
+                <Badge variant="outline" className="capitalize border-accent/30 text-accent">{currentPlan}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-end justify-between mb-2">
+                <span className="text-2xl font-bold">{currentCount} / {currentLimit}</span>
+                <span className="text-[10px] text-muted-foreground uppercase font-bold">ASINs Tracked</span>
+              </div>
+              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-1000 ${currentCount >= currentLimit ? 'bg-destructive' : 'bg-accent'}`}
+                  style={{ width: `${Math.min((currentCount / currentLimit) * 100, 100)}%` }}
+                />
+              </div>
+              {currentCount >= currentLimit && (
+                <p className="text-[10px] text-destructive mt-2 flex items-center gap-1 font-bold">
+                  <ShieldAlert className="h-3 w-3" /> Upgrade to Agency plan for more slots.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="border-accent/20">
             <CardHeader>
               <CardTitle className="text-lg font-headline flex items-center gap-2">

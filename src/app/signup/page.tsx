@@ -35,13 +35,14 @@ export default function SignupPage() {
       const profileData = {
         user_id: user.uid,
         email: user.email,
-        subscription_plan: "free",
+        subscription_plan: "starter",
         created_at: serverTimestamp(),
+        monitoring_frequency: "hourly",
+        sales_check_time: "00:00"
       };
 
       const userRef = doc(firestore, "users", user.uid);
 
-      // Non-blocking profile creation with error handling
       setDoc(userRef, profileData)
         .catch(async () => {
           errorEmitter.emit('permission-error', new FirestorePermissionError({

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect } from "react";
@@ -6,14 +5,23 @@ import { useRouter, usePathname } from "next/navigation";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useAuth, useUser } from "@/firebase";
+import { useAuth, useUser, useFirestore, useDoc } from "@/firebase";
 import { signOut } from "firebase/auth";
+import { doc } from "firebase/firestore";
+import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useUser();
   const { auth } = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const pathname = usePathname();
+
+  const userDocRef = useMemoFirebase(() => {
+    if (!firestore || !user?.uid) return null;
+    return doc(firestore, "users", user.uid);
+  }, [firestore, user?.uid]);
+  const { data: profile } = useDoc(userDocRef);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -121,8 +129,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center px-4 py-2 bg-card border rounded-lg text-sm gap-3">
                 <span className="text-muted-foreground">Account Status:</span>
-                <span className="text-accent font-medium flex items-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Pro Plan
+                <span className="text-accent font-medium flex items-center gap-1.5 capitalize">
+                  <ShieldCheck className="h-3.5 w-3.5" /> {profile?.subscription_plan || "Starter"} Plan
                 </span>
               </div>
             </div>

@@ -7,7 +7,7 @@
       "properties": {
         "user_id": { "type": "string" },
         "email": { "type": "string", "format": "email" },
-        "subscription_plan": { "type": "string", "enum": ["free", "pro"] },
+        "subscription_plan": { "type": "string", "enum": ["starter", "agency", "enterprise"] },
         "created_at": { "type": "string", "format": "date-time" },
         "monitoring_frequency": { "type": "string", "default": "hourly" },
         "sales_check_time": { "type": "string", "default": "00:00" },
