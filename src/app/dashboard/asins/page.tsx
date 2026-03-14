@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,8 @@ const PLAN_LIMITS: Record<string, number> = {
   enterprise: 1000,
 };
 
+const BATCH_SIZE = 50;
+
 export default function AsinsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
@@ -31,6 +34,7 @@ export default function AsinsPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
 
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
@@ -54,8 +58,9 @@ export default function AsinsPage() {
   const currentCount = asins?.length || 0;
 
   const handleSyncAll = async () => {
-    if (!firestore || !user?.uid || !user?.email || !asins || asins.length === 0) return;
+    if (!firestore || !user?.uid || !user?.email) return;
     setIsSyncing(true);
+    setSyncProgress({ current: 0, total: asins?.length || 0 });
     
     try {
       const monitoringRef = collection(firestore, "monitoring_data");
@@ -63,104 +68,125 @@ export default function AsinsPage() {
       const alertsRef = collection(firestore, "alerts");
       const mailRef = collection(firestore, "mail");
       
-      let alertsCount = 0;
+      let lastVisible = null;
+      let totalAlerts = 0;
+      let totalProcessed = 0;
 
-      for (const item of asins) {
-        const isOutOfStock = Math.random() > 0.85;
-        const buyBoxLost = Math.random() > 0.9;
-        const priceHike = Math.random() > 0.92;
-        const shippingDelay = Math.random() > 0.95;
-        const badReview = Math.random() > 0.98;
+      // Batch Processing Loop
+      while (true) {
+        let q = query(
+          collection(firestore, "asins"),
+          where("user_id", "==", user.uid),
+          orderBy("created_at", "desc"),
+          limit(BATCH_SIZE)
+        );
 
-        const basePrice = 124.99;
-        const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
-        
-        const mockMonitoring = {
-          user_id: user.uid,
-          asin_code: item.asin_code,
-          timestamp: serverTimestamp(),
-          price: Number(currentPrice.toFixed(2)),
-          stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
-          buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
-          delivery_days: shippingDelay ? 7 : 2,
-          rating: badReview ? 3.5 : 4.8
+        if (lastVisible) {
+          q = query(q, startAfter(lastVisible));
+        }
+
+        // Retry logic for fetching the batch
+        const fetchBatchWithRetry = async (retries = 3) => {
+          for (let i = 0; i < retries; i++) {
+            try {
+              return await getDocs(q);
+            } catch (e) {
+              if (i === retries - 1) throw e;
+              await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
+            }
+          }
         };
 
-        addDoc(monitoringRef, mockMonitoring).catch(async () => {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: "monitoring_data",
-            operation: "create",
-            requestResourceData: mockMonitoring,
-          }));
-        });
+        const snapshot = await fetchBatchWithRetry();
+        if (!snapshot || snapshot.empty) break;
 
-        const dailyAverage = 50;
-        const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
-        const todaySales = hasIssue 
-          ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
-          : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
+        lastVisible = snapshot.docs[snapshot.docs.length - 1];
 
-        const todaySalesData = {
-          user_id: user.uid,
-          asin_code: item.asin_code,
-          date: new Date().toISOString().split('T')[0],
-          units_sold: todaySales,
-          revenue: Number((todaySales * currentPrice).toFixed(2))
-        };
-
-        addDoc(salesRef, todaySalesData).catch(async () => {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: "sales_data",
-            operation: "create",
-            requestResourceData: todaySalesData,
-          }));
-        });
-
-        if (todaySales < (dailyAverage * 0.7)) {
-          let reason = "SALES_VELOCITY_DROP";
+        // Process items in current batch
+        for (const docSnap of snapshot.docs) {
+          const item = docSnap.data();
           
-          if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
-          else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
-          else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
-          else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
-          else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
+          // Simulation logic
+          const isOutOfStock = Math.random() > 0.85;
+          const buyBoxLost = Math.random() > 0.9;
+          const priceHike = Math.random() > 0.92;
+          const shippingDelay = Math.random() > 0.95;
+          const badReview = Math.random() > 0.98;
 
-          const alertData = {
+          const basePrice = 124.99;
+          const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
+          
+          const mockMonitoring = {
             user_id: user.uid,
             asin_code: item.asin_code,
-            alert_type: "SALES_DROP",
-            reason: reason,
-            severity: "high",
-            status: "active",
             timestamp: serverTimestamp(),
+            price: Number(currentPrice.toFixed(2)),
+            stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
+            buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
+            delivery_days: shippingDelay ? 7 : 2,
+            rating: badReview ? 3.5 : 4.8
           };
 
-          addDoc(alertsRef, alertData).catch(async () => {
-             errorEmitter.emit('permission-error', new FirestorePermissionError({
-               path: "alerts",
-               operation: "create",
-               requestResourceData: alertData,
-             }));
-          });
-
-          const mailData = {
-            to: user.email,
-            message: {
-              subject: `Amazon Alert – Issue Detected: ${item.asin_code}`,
-              text: `ASIN: ${item.asin_code}\nIssue: ${reason.replace(/_/g, ' ')}\nSeverity: High\n\nPlease check your dashboard for resolution steps.`
-            }
-          };
-
-          addDoc(mailRef, mailData).catch(async () => {
+          addDoc(monitoringRef, mockMonitoring).catch(async () => {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: "mail",
+              path: "monitoring_data",
               operation: "create",
-              requestResourceData: mailData,
+              requestResourceData: mockMonitoring,
             }));
           });
 
-          alertsCount++;
+          const dailyAverage = 50;
+          const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
+          const todaySales = hasIssue 
+            ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
+            : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
+
+          const todaySalesData = {
+            user_id: user.uid,
+            asin_code: item.asin_code,
+            date: new Date().toISOString().split('T')[0],
+            units_sold: todaySales,
+            revenue: Number((todaySales * currentPrice).toFixed(2))
+          };
+
+          addDoc(salesRef, todaySalesData).catch(async () => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+              path: "sales_data",
+              operation: "create",
+              requestResourceData: todaySalesData,
+            }));
+          });
+
+          if (todaySales < (dailyAverage * 0.7)) {
+            let reason = "SALES_VELOCITY_DROP";
+            if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
+            else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
+            else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
+            else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
+            else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
+
+            const alertData = {
+              user_id: user.uid,
+              asin_code: item.asin_code,
+              alert_type: "SALES_DROP",
+              reason: reason,
+              severity: "high",
+              status: "active",
+              timestamp: serverTimestamp(),
+            };
+
+            addDoc(alertsRef, alertData);
+            totalAlerts++;
+          }
+          
+          totalProcessed++;
+          setSyncProgress(prev => ({ ...prev, current: totalProcessed }));
         }
+
+        if (snapshot.docs.length < BATCH_SIZE) break;
+        
+        // Artificial throttle between batches to avoid rate limiting
+        await new Promise(r => setTimeout(r, 200));
       }
 
       updateDoc(doc(firestore, "users", user.uid), {
@@ -168,26 +194,23 @@ export default function AsinsPage() {
       });
 
       toast({
-        title: "Simulation Complete",
-        description: `Audited ${asins.length} ASINs. Detected ${alertsCount} operational issues.`,
+        title: "Batch Processing Complete",
+        description: `Successfully audited ${totalProcessed} ASINs. Detected ${totalAlerts} issues.`,
       });
     } catch (error) {
-      console.error("Sync failed", error);
+      console.error("Batch sync failed", error);
+      toast({ variant: "destructive", title: "Sync Error", description: "Failed to complete batch monitoring run." });
     } finally {
       setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 0 });
     }
   };
 
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
-    // Limit Check
     if (currentCount + asinList.length > currentLimit) {
-      toast({
-        variant: "destructive",
-        title: "Limit Exceeded",
-        description: "ASIN limit reached for your subscription plan.",
-      });
+      toast({ variant: "destructive", title: "Limit Exceeded", description: "ASIN limit reached for your subscription plan." });
       return;
     }
 
@@ -315,9 +338,23 @@ export default function AsinsPage() {
                 <CardDescription>Job status for {asins?.length || 0} enrolled products</CardDescription>
               </div>
               <div className="flex items-center gap-3">
-                <Button variant="outline" className="h-9 border-accent/30 text-accent font-bold bg-accent/5 hover:bg-accent/10" onClick={handleSyncAll} disabled={isSyncing || asins?.length === 0}>
-                  {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
-                  Trigger Scheduler Run
+                <Button 
+                  variant="outline" 
+                  className="h-9 border-accent/30 text-accent font-bold bg-accent/5 hover:bg-accent/10" 
+                  onClick={handleSyncAll} 
+                  disabled={isSyncing || asins?.length === 0}
+                >
+                  {isSyncing ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-[10px]">Processing {syncProgress.current}/{syncProgress.total}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Trigger Scheduler Run
+                    </>
+                  )}
                 </Button>
                 <Input 
                   placeholder="Search catalog..." 
