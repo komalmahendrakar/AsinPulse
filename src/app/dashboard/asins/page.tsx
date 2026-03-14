@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter, setDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,6 +23,8 @@ const PLAN_LIMITS: Record<string, number> = {
 };
 
 const BATCH_SIZE = 50;
+const RATE_LIMIT_MAX_REQUESTS = 10;
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
   let lastError: any;
@@ -32,7 +34,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
     } catch (err) {
       lastError = err;
       if (i < retries - 1) {
-        // Exponential backoff
         await new Promise(r => setTimeout(r, 1000 * (i + 1)));
       }
     }
@@ -73,6 +74,24 @@ export default function AsinsPage() {
   const currentLimit = PLAN_LIMITS[currentPlan] || 100;
   const currentCount = asins?.length || 0;
 
+  // Rate limiting logic
+  const checkRateLimit = (): boolean => {
+    const now = Date.now();
+    const storedHistory = localStorage.getItem(`asin_request_history_${user?.uid}`);
+    let history: number[] = storedHistory ? JSON.parse(storedHistory) : [];
+    
+    // Filter history to last 60 seconds
+    history = history.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW_MS);
+    
+    if (history.length >= RATE_LIMIT_MAX_REQUESTS) {
+      return false;
+    }
+    
+    history.push(now);
+    localStorage.setItem(`asin_request_history_${user?.uid}`, JSON.stringify(history));
+    return true;
+  };
+
   const logSystemEvent = (eventType: string, description: string, functionName: string, alertId?: string) => {
     if (!firestore || !user?.uid) return;
     addDoc(collection(firestore, "system_logs"), {
@@ -82,7 +101,7 @@ export default function AsinsPage() {
       description: description,
       function_name: functionName,
       ...(alertId && { alert_id: alertId })
-    }).catch(e => console.error("Critical: Failed to log system event to Firestore", e));
+    }).catch(e => console.error("Critical: Failed to log system event", e));
   };
 
   const handleSyncAll = async () => {
@@ -182,7 +201,6 @@ export default function AsinsPage() {
               else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
               else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
 
-              // Generate ID locally to link SystemLogs to the Alert
               const alertDocRef = doc(alertsRef);
               const alertId = alertDocRef.id;
 
@@ -209,7 +227,6 @@ export default function AsinsPage() {
                 });
               };
 
-              // Resilient email queuing with retries
               withRetry(queueMailTask, 3).catch((error) => {
                 logSystemEvent(
                   "EMAIL_FAILURE", 
@@ -254,6 +271,16 @@ export default function AsinsPage() {
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
+    // API Rate Limiting Check
+    if (!checkRateLimit()) {
+      toast({
+        variant: "destructive",
+        title: "Rate Limit Exceeded",
+        description: "Too many requests. Please try again later.",
+      });
+      return;
+    }
+
     if (currentCount + asinList.length > currentLimit) {
       toast({ variant: "destructive", title: "Limit Exceeded", description: "ASIN limit reached for your subscription plan." });
       return;
