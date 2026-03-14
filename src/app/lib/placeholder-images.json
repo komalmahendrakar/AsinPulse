@@ -1,0 +1,29 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-dashboard",
+      "description": "A futuristic e-commerce dashboard showing sales charts and analytics.",
+      "imageUrl": "https://picsum.photos/seed/asin1/1200/800",
+      "imageHint": "ecommerce dashboard"
+    },
+    {
+      "id": "asin-product-1",
+      "description": "Modern electronics product placeholder.",
+      "imageUrl": "https://picsum.photos/seed/prod1/400/400",
+      "imageHint": "gadget electronics"
+    },
+    {
+      "id": "asin-product-2",
+      "description": "Home office setup placeholder.",
+      "imageUrl": "https://picsum.photos/seed/prod2/400/400",
+      "imageHint": "home office"
+    },
+    {
+      "id": "user-avatar",
+      "description": "Professional user profile picture.",
+      "imageUrl": "https://picsum.photos/seed/user/100/100",
+      "imageHint": "professional portrait"
+    }
+  ]
+}
