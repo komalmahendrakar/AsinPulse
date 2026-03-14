@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to check if the user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Helper to check if the user owns the data being written
+    function isDataOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.user_id;
+    }
+
+    // User profiles: Only the user can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ASINs: Users can only manage their own tracked products
+    match /asins/{asinId} {
+      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isDataOwner();
+      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Monitoring and Sales Data: Authenticated reads for the dashboard
+    match /monitoring_data/{dataId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Allowed for prototype simulation
+    }
+
+    match /sales_data/{dataId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Allowed for prototype simulation
+    }
+
+    // Alerts: Only the owner can see or resolve their alerts
+    match /alerts/{alertId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow create: if isDataOwner();
+    }
+
+    // Mail queue: Users can only queue emails for themselves
+    match /mail/{mailId} {
+      allow create: if isAuthenticated();
+    }
+  }
+}

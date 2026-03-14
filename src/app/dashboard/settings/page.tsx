@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useUser, useFirestore, useDoc } from "@/firebase";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Clock, Calendar, ShieldCheck, Save, Loader2, RefreshCw } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 export default function SettingsPage() {
   const { user } = useUser();
@@ -24,7 +25,7 @@ export default function SettingsPage() {
 
   const { data: profile, loading } = useDoc(userDocRef);
 
-  const handleUpdateSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleUpdateSettings = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!firestore || !user?.uid) return;
 
@@ -34,13 +35,19 @@ export default function SettingsPage() {
       sales_check_time: formData.get("sales_check_time"),
     };
 
-    try {
-      await updateDoc(doc(firestore, "users", user.uid), updates);
-      toast({ title: "Configuration Saved", description: "Cloud Scheduler jobs updated." });
-    } catch (error) {
-      console.error(error);
-      toast({ variant: "destructive", title: "Update Failed", description: "Could not save scheduler settings." });
-    }
+    const userRef = doc(firestore, "users", user.uid);
+
+    // Non-blocking mutation with centralized error handling
+    updateDoc(userRef, updates)
+      .catch(async () => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: userRef.path,
+          operation: 'update',
+          requestResourceData: updates,
+        }));
+      });
+
+    toast({ title: "Update Initiated", description: "Cloud Scheduler settings are being synchronized." });
   };
 
   if (loading) {

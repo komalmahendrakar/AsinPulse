@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -13,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Activity, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -31,13 +32,24 @@ export default function SignupPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Create user profile in Firestore
-      await setDoc(doc(firestore, "users", user.uid), {
+      const profileData = {
         user_id: user.uid,
         email: user.email,
         subscription_plan: "free",
         created_at: serverTimestamp(),
-      });
+      };
+
+      const userRef = doc(firestore, "users", user.uid);
+
+      // Non-blocking profile creation with error handling
+      setDoc(userRef, profileData)
+        .catch(async () => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: userRef.path,
+            operation: 'create',
+            requestResourceData: profileData,
+          }));
+        });
 
       router.push("/dashboard");
     } catch (error: any) {

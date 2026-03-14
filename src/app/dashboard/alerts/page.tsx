@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useUser, useFirestore, useCollection } from "@/firebase";
@@ -7,11 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, ExternalLink, Loader2, Bell, CheckCircle2, History, Filter } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, Bell, CheckCircle2, Filter } from "lucide-react";
 import Link from "next/link";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 export default function AlertsPage() {
   const { user } = useUser();
@@ -30,16 +31,26 @@ export default function AlertsPage() {
 
   const { data: alerts, loading } = useCollection(alertsQuery);
 
-  const resolveAlert = async (alertId: string) => {
+  const resolveAlert = (alertId: string) => {
     if (!firestore) return;
-    try {
-      await updateDoc(doc(firestore, "alerts", alertId), {
-        status: "resolved"
+    
+    const alertRef = doc(firestore, "alerts", alertId);
+    const updateData = { status: "resolved" };
+
+    // Non-blocking mutation with centralized error handling
+    updateDoc(alertRef, updateData)
+      .catch(async () => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: alertRef.path,
+          operation: 'update',
+          requestResourceData: updateData,
+        }));
       });
-      toast({ title: "Alert Resolved", description: "The issue has been marked as addressed." });
-    } catch (e) {
-      console.error(e);
-    }
+      
+    toast({ 
+      title: "Alert Resolving", 
+      description: "The issue status is being updated." 
+    });
   };
 
   const filteredAlerts = alerts?.filter(alert => {
