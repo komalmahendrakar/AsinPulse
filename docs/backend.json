@@ -103,6 +103,19 @@
         }
       },
       "required": ["to", "message"]
+    },
+    "UsageMetrics": {
+      "title": "UsageMetrics",
+      "description": "Daily platform usage statistics for a user.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "number_of_asins_monitored": { "type": "number" },
+        "alerts_generated": { "type": "number" },
+        "monitoring_runs": { "type": "number" }
+      },
+      "required": ["user_id", "date"]
     }
   },
   "auth": {
@@ -136,6 +149,10 @@
     "/mail/{mailId}": {
       "schema": "Mail",
       "description": "Outbound email queue"
+    },
+    "/usage_metrics/{metricId}": {
+      "schema": "UsageMetrics",
+      "description": "Daily usage tracking"
     }
   }
 }

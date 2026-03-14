@@ -4,14 +4,18 @@
 /**
  * @fileOverview Server Action for executing the ASIN monitoring sync securely.
  * This ensures that monitoring API keys and alert configurations remain on the server.
+ * Tracks platform usage metrics daily.
  */
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc, getDocs, query, where, limit, startAfter } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from 'firebase/firestore';
 
 const MONITORING_API_KEY = process.env.MONITORING_API_KEY;
-const ALERT_CONFIG = process.env.ALERT_SERVICE_CONFIG ? JSON.parse(process.env.ALERT_SERVICE_CONFIG) : { retry_limit: 3 };
 
+/**
+ * Executes a secure sync batch for a set of ASINs.
+ * Updates daily usage metrics upon completion.
+ */
 export async function executeSecureSyncBatch(userId: string, userEmail: string, asinBatch: any[]) {
   if (!MONITORING_API_KEY) {
     throw new Error("Configuration Error: Monitoring API Key is missing.");
@@ -23,13 +27,13 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
     errors: 0
   };
 
+  const todayDate = new Date().toISOString().split('T')[0];
+  const metricsRef = doc(db, "usage_metrics", `${userId}_${todayDate}`);
+
   for (const asin of asinBatch) {
     try {
-      // In a real app, this would be: 
-      // const response = await fetch(`https://api.monitoring.com/v1/asin/${asin.asin_code}?key=${MONITORING_API_KEY}`);
-      
-      // Simulating secure server-side logic
-      const isOutOfStock = Math.random() > 0.85;
+      // Simulate secure monitoring logic
+      const isOutOfStock = Math.random() > 0.9;
       const basePrice = 124.99;
       
       const monitoringData = {
@@ -75,6 +79,19 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
       console.error(`Sync error for ASIN ${asin.asin_code}:`, e);
       results.errors++;
     }
+  }
+
+  // Update Daily Usage Metrics
+  try {
+    await setDoc(metricsRef, {
+      user_id: userId,
+      date: todayDate,
+      number_of_asins_monitored: increment(results.processed),
+      alerts_generated: increment(results.alerts),
+      monitoring_runs: increment(1)
+    }, { merge: true });
+  } catch (metricsError) {
+    console.error("Failed to update usage metrics:", metricsError);
   }
 
   return results;
