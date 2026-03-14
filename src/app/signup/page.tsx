@@ -19,14 +19,22 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const { auth } = useAuth();
+  const auth = useAuth();
   const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !firestore) return;
+    if (!auth || !firestore) {
+      toast({
+        variant: "destructive",
+        title: "Configuration Error",
+        description: "Firebase services are not initialized.",
+      });
+      return;
+    }
+    
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -38,11 +46,14 @@ export default function SignupPage() {
         subscription_plan: "starter",
         created_at: serverTimestamp(),
         monitoring_frequency: "hourly",
-        sales_check_time: "00:00"
+        sales_check_time: "00:00",
+        role: "user",
+        status: "active"
       };
 
       const userRef = doc(firestore, "users", user.uid);
 
+      // Mutation is initiated without blocking the main thread
       setDoc(userRef, profileData)
         .catch(async () => {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -52,6 +63,11 @@ export default function SignupPage() {
           }));
         });
 
+      toast({
+        title: "Account Created",
+        description: "Welcome to ASIN Pulse! Redirecting to dashboard...",
+      });
+      
       router.push("/dashboard");
     } catch (error: any) {
       toast({
