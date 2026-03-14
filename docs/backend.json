@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -73,6 +74,19 @@
       },
       "required": ["user_id", "asin_code", "alert_type", "timestamp"]
     },
+    "Log": {
+      "title": "Log",
+      "description": "System error and activity logs for monitoring jobs.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "function_name": { "type": "string" },
+        "error_message": { "type": "string" },
+        "asin_code": { "type": "string" }
+      },
+      "required": ["user_id", "timestamp", "function_name"]
+    },
     "Mail": {
       "title": "Mail",
       "description": "Outbound email queue for Trigger Email extension",
@@ -113,6 +127,10 @@
     "/alerts/{alertId}": {
       "schema": "Alert",
       "description": "System generated alerts"
+    },
+    "/logs/{logId}": {
+      "schema": "Log",
+      "description": "System error logs"
     },
     "/mail/{mailId}": {
       "schema": "Mail",

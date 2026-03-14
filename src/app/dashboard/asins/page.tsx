@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert } from "lucide-react";
+import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert, Bug } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
@@ -57,6 +57,17 @@ export default function AsinsPage() {
   const currentLimit = PLAN_LIMITS[currentPlan] || 100;
   const currentCount = asins?.length || 0;
 
+  const logSystemError = (functionName: string, errorMessage: string, asinCode?: string) => {
+    if (!firestore || !user?.uid) return;
+    addDoc(collection(firestore, "logs"), {
+      user_id: user.uid,
+      timestamp: serverTimestamp(),
+      function_name: functionName,
+      error_message: errorMessage,
+      asin_code: asinCode || "N/A"
+    }).catch(e => console.error("Critical: Failed to log error to Firestore", e));
+  };
+
   const handleSyncAll = async () => {
     if (!firestore || !user?.uid || !user?.email) return;
     setIsSyncing(true);
@@ -72,7 +83,6 @@ export default function AsinsPage() {
       let totalAlerts = 0;
       let totalProcessed = 0;
 
-      // Batch Processing Loop
       while (true) {
         let q = query(
           collection(firestore, "asins"),
@@ -86,13 +96,16 @@ export default function AsinsPage() {
         }
 
         // Retry logic for fetching the batch
-        const fetchBatchWithRetry = async (retries = 3) => {
+        const fetchBatchWithRetry = async (retries = 3): Promise<any> => {
           for (let i = 0; i < retries; i++) {
             try {
               return await getDocs(q);
-            } catch (e) {
-              if (i === retries - 1) throw e;
-              await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
+            } catch (e: any) {
+              if (i === retries - 1) {
+                logSystemError("fetchBatchWithRetry", e.message);
+                throw e;
+              }
+              await new Promise(r => setTimeout(r, 1000 * (i + 1)));
             }
           }
         };
@@ -102,90 +115,118 @@ export default function AsinsPage() {
 
         lastVisible = snapshot.docs[snapshot.docs.length - 1];
 
-        // Process items in current batch
+        // Process items in current batch with isolated try/catch and internal retries
         for (const docSnap of snapshot.docs) {
           const item = docSnap.data();
-          
-          // Simulation logic
-          const isOutOfStock = Math.random() > 0.85;
-          const buyBoxLost = Math.random() > 0.9;
-          const priceHike = Math.random() > 0.92;
-          const shippingDelay = Math.random() > 0.95;
-          const badReview = Math.random() > 0.98;
+          const asinCode = item.asin_code;
 
-          const basePrice = 124.99;
-          const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
-          
-          const mockMonitoring = {
-            user_id: user.uid,
-            asin_code: item.asin_code,
-            timestamp: serverTimestamp(),
-            price: Number(currentPrice.toFixed(2)),
-            stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
-            buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
-            delivery_days: shippingDelay ? 7 : 2,
-            rating: badReview ? 3.5 : 4.8
+          const processAsinWithRetry = async (retries = 2) => {
+            for (let i = 0; i <= retries; i++) {
+              try {
+                // Simulation logic
+                const isOutOfStock = Math.random() > 0.85;
+                const buyBoxLost = Math.random() > 0.9;
+                const priceHike = Math.random() > 0.92;
+                const shippingDelay = Math.random() > 0.95;
+                const badReview = Math.random() > 0.98;
+
+                const basePrice = 124.99;
+                const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
+                
+                const mockMonitoring = {
+                  user_id: user.uid,
+                  asin_code: asinCode,
+                  timestamp: serverTimestamp(),
+                  price: Number(currentPrice.toFixed(2)),
+                  stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
+                  buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
+                  delivery_days: shippingDelay ? 7 : 2,
+                  rating: badReview ? 3.5 : 4.8
+                };
+
+                addDoc(monitoringRef, mockMonitoring).catch(async () => {
+                  errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: "monitoring_data",
+                    operation: "create",
+                    requestResourceData: mockMonitoring,
+                  }));
+                });
+
+                const dailyAverage = 50;
+                const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
+                const todaySales = hasIssue 
+                  ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
+                  : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
+
+                const todaySalesData = {
+                  user_id: user.uid,
+                  asin_code: asinCode,
+                  date: new Date().toISOString().split('T')[0],
+                  units_sold: todaySales,
+                  revenue: Number((todaySales * currentPrice).toFixed(2))
+                };
+
+                addDoc(salesRef, todaySalesData).catch(async () => {
+                  errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: "sales_data",
+                    operation: "create",
+                    requestResourceData: todaySalesData,
+                  }));
+                });
+
+                if (todaySales < (dailyAverage * 0.7)) {
+                  let reason = "SALES_VELOCITY_DROP";
+                  if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
+                  else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
+                  else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
+                  else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
+                  else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
+
+                  const alertData = {
+                    user_id: user.uid,
+                    asin_code: asinCode,
+                    alert_type: "SALES_DROP",
+                    reason: reason,
+                    severity: "high",
+                    status: "active",
+                    timestamp: serverTimestamp(),
+                  };
+
+                  addDoc(alertsRef, alertData);
+                  
+                  // Queue Email Notification via "mail" collection
+                  addDoc(mailRef, {
+                    to: user.email,
+                    message: {
+                      subject: "Amazon Alert – ASIN Issue Detected",
+                      text: `ASIN: ${asinCode}\nIssue: ${reason}\nSeverity: High\n\nPerformance has dropped significantly. Log in to the dashboard to take action.`
+                    }
+                  });
+
+                  totalAlerts++;
+                }
+                return; // Success, exit retry loop
+              } catch (e: any) {
+                if (i === retries) {
+                  logSystemError("monitorASINs_process_item", e.message, asinCode);
+                  throw e;
+                }
+                await new Promise(r => setTimeout(r, 500)); // Short backoff
+              }
+            }
           };
 
-          addDoc(monitoringRef, mockMonitoring).catch(async () => {
-            errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: "monitoring_data",
-              operation: "create",
-              requestResourceData: mockMonitoring,
-            }));
-          });
-
-          const dailyAverage = 50;
-          const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
-          const todaySales = hasIssue 
-            ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
-            : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
-
-          const todaySalesData = {
-            user_id: user.uid,
-            asin_code: item.asin_code,
-            date: new Date().toISOString().split('T')[0],
-            units_sold: todaySales,
-            revenue: Number((todaySales * currentPrice).toFixed(2))
-          };
-
-          addDoc(salesRef, todaySalesData).catch(async () => {
-            errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: "sales_data",
-              operation: "create",
-              requestResourceData: todaySalesData,
-            }));
-          });
-
-          if (todaySales < (dailyAverage * 0.7)) {
-            let reason = "SALES_VELOCITY_DROP";
-            if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
-            else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
-            else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
-            else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
-            else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
-
-            const alertData = {
-              user_id: user.uid,
-              asin_code: item.asin_code,
-              alert_type: "SALES_DROP",
-              reason: reason,
-              severity: "high",
-              status: "active",
-              timestamp: serverTimestamp(),
-            };
-
-            addDoc(alertsRef, alertData);
-            totalAlerts++;
+          try {
+            await processAsinWithRetry();
+          } catch (e) {
+            console.error(`Item process failed for ${asinCode}`, e);
           }
-          
+
           totalProcessed++;
           setSyncProgress(prev => ({ ...prev, current: totalProcessed }));
         }
 
         if (snapshot.docs.length < BATCH_SIZE) break;
-        
-        // Artificial throttle between batches to avoid rate limiting
         await new Promise(r => setTimeout(r, 200));
       }
 
@@ -194,12 +235,12 @@ export default function AsinsPage() {
       });
 
       toast({
-        title: "Batch Processing Complete",
-        description: `Successfully audited ${totalProcessed} ASINs. Detected ${totalAlerts} issues.`,
+        title: "Monitoring Complete",
+        description: `Audited ${totalProcessed} ASINs. Detected ${totalAlerts} issues.`,
       });
-    } catch (error) {
-      console.error("Batch sync failed", error);
-      toast({ variant: "destructive", title: "Sync Error", description: "Failed to complete batch monitoring run." });
+    } catch (error: any) {
+      logSystemError("handleSyncAll_global", error.message);
+      toast({ variant: "destructive", title: "Sync Failure", description: "Critical error encountered. System logged the diagnostic." });
     } finally {
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 0 });
@@ -233,6 +274,7 @@ export default function AsinsPage() {
       setSingleAsin("");
       setBulkAsins("");
     } catch (error: any) {
+      logSystemError("handleAddAsins", error.message);
       toast({ variant: "destructive", title: "Error", description: "Enrollment failed." });
     } finally {
       setIsAdding(false);
