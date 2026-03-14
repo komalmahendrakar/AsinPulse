@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "User": {
@@ -38,7 +37,8 @@
         "buybox_owner": { "type": "string" },
         "delivery_days": { "type": "number" },
         "rating": { "type": "number" }
-      }
+      },
+      "required": ["asin_code", "timestamp"]
     },
     "SalesData": {
       "title": "SalesData",
@@ -49,7 +49,8 @@
         "date": { "type": "string", "format": "date" },
         "units_sold": { "type": "number" },
         "revenue": { "type": "number" }
-      }
+      },
+      "required": ["asin_code", "date"]
     },
     "Alert": {
       "title": "Alert",
@@ -63,7 +64,8 @@
         "reason": { "type": "string" },
         "severity": { "type": "string", "enum": ["low", "medium", "high"] },
         "timestamp": { "type": "string", "format": "date-time" }
-      }
+      },
+      "required": ["asin_code", "alert_type", "timestamp"]
     }
   },
   "auth": {
@@ -78,13 +80,13 @@
       "schema": "ASIN",
       "description": "Monitored ASINs"
     },
-    "/asins/{asinId}/monitoring": {
+    "/monitoring_data/{dataId}": {
       "schema": "MonitoringData",
-      "description": "Periodic snapshots of ASIN performance"
+      "description": "Global periodic snapshots of ASIN performance"
     },
-    "/asins/{asinId}/sales": {
+    "/sales_data/{dataId}": {
       "schema": "SalesData",
-      "description": "Daily sales data"
+      "description": "Global daily sales data"
     },
     "/alerts/{alertId}": {
       "schema": "Alert",
