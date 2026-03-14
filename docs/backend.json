@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -66,6 +67,22 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["asin_code", "alert_type", "timestamp"]
+    },
+    "Mail": {
+      "title": "Mail",
+      "description": "Outbound email queue for Trigger Email extension",
+      "type": "object",
+      "properties": {
+        "to": { "type": "string" },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        }
+      },
+      "required": ["to", "message"]
     }
   },
   "auth": {
@@ -91,6 +108,10 @@
     "/alerts/{alertId}": {
       "schema": "Alert",
       "description": "System generated alerts"
+    },
+    "/mail/{mailId}": {
+      "schema": "Mail",
+      "description": "Outbound email queue"
     }
   }
 }

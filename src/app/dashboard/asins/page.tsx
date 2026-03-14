@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, Package, Search, RefreshCw } from "lucide-react";
+import { Plus, Upload, Loader2, RefreshCw } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
@@ -39,28 +39,30 @@ export default function AsinsPage() {
   const { data: asins, loading } = useCollection(asinsQuery);
 
   const handleSyncAll = async () => {
-    if (!firestore || !user?.uid || !asins || asins.length === 0) return;
+    if (!firestore || !user?.uid || !user?.email || !asins || asins.length === 0) return;
     setIsSyncing(true);
     
     try {
       const monitoringRef = collection(firestore, "monitoring_data");
       const salesRef = collection(firestore, "sales_data");
       const alertsRef = collection(firestore, "alerts");
+      const mailRef = collection(firestore, "mail");
       
       let alertsCount = 0;
 
       for (const item of asins) {
-        // 1. Generate & Save Monitoring Signals (with intentional variations for detection)
-        const isOutOfStock = Math.random() > 0.9;
+        // 1. Generate & Save Monitoring Signals
+        const isOutOfStock = Math.random() > 0.8;
         const buyBoxLost = Math.random() > 0.85;
         const priceHike = Math.random() > 0.9;
         const shippingDelay = Math.random() > 0.9;
         const badReview = Math.random() > 0.95;
 
+        const currentPrice = priceHike ? 159.99 : 124.99;
         const mockMonitoring = {
           asin_code: item.asin_code,
           timestamp: serverTimestamp(),
-          price: priceHike ? 159.99 : 124.99,
+          price: currentPrice,
           stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
           buybox_owner: buyBoxLost ? "Competitor Prime" : "Your Store",
           delivery_days: shippingDelay ? 7 : 2,
@@ -77,20 +79,16 @@ export default function AsinsPage() {
 
         // 2. Generate Sales History
         const dailyAverage = 50;
-        const sevenDayTotal = dailyAverage * 7;
-        const sevenDayAvg = dailyAverage;
-        
-        // Force a sales drop if we have operational issues
         const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
         const todaySales = hasIssue 
-          ? Math.floor(dailyAverage * 0.2) // 80% drop
+          ? Math.floor(dailyAverage * 0.2) 
           : Math.floor(dailyAverage * (0.9 + Math.random() * 0.2));
 
         const todaySalesData = {
           asin_code: item.asin_code,
           date: new Date().toISOString().split('T')[0],
           units_sold: todaySales,
-          revenue: todaySales * mockMonitoring.price,
+          revenue: todaySales * currentPrice,
           user_id: user.uid
         };
 
@@ -102,22 +100,15 @@ export default function AsinsPage() {
           }));
         });
 
-        // 3. Sales Drop Detection & Root Cause Analysis (Step 7)
-        if (todaySales < (sevenDayAvg * 0.7)) {
+        // 3. Sales Drop Detection & Root Cause Analysis & Email Alerts
+        if (todaySales < (dailyAverage * 0.7)) {
           let reason = "UNSPECIFIED_TREND";
           
-          // Rule-based Root Cause Detection
-          if (mockMonitoring.stock === 0) {
-            reason = "OUT_OF_STOCK";
-          } else if (mockMonitoring.buybox_owner !== "Your Store") {
-            reason = "BUYBOX_LOST";
-          } else if (mockMonitoring.price > 124.99 * 1.05) {
-            reason = "PRICE_INCREASED";
-          } else if (mockMonitoring.delivery_days > 2) {
-            reason = "DELIVERY_DELAY";
-          } else if (mockMonitoring.rating < 4.0) {
-            reason = "NEGATIVE_REVIEW_IMPACT";
-          }
+          if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
+          else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
+          else if (mockMonitoring.price > 124.99 * 1.05) reason = "PRICE_INCREASED";
+          else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
+          else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
 
           const alertData = {
             user_id: user.uid,
@@ -135,13 +126,31 @@ export default function AsinsPage() {
                requestResourceData: alertData,
              }));
           });
+
+          // Queue Email Alert
+          const mailData = {
+            to: user.email,
+            message: {
+              subject: `Amazon Alert – ASIN Issue Detected: ${item.asin_code}`,
+              text: `ASIN: ${item.asin_code}\nIssue: ${reason.replace(/_/g, ' ')}\nSeverity: High\n\nPlease log in to your dashboard for detailed root cause analysis.`
+            }
+          };
+
+          addDoc(mailRef, mailData).catch(async () => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+              path: "mail",
+              operation: "create",
+              requestResourceData: mailData,
+            }));
+          });
+
           alertsCount++;
         }
       }
 
       toast({
-        title: "Sync & Detection Complete",
-        description: `Analyzed ${asins.length} products. Detected ${alertsCount} root causes.`,
+        title: "Sync Complete",
+        description: `Analyzed ${asins.length} products. Detected ${alertsCount} issues and queued email alerts.`,
       });
     } catch (error) {
       console.error("Sync failed", error);
