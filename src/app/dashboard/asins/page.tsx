@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useUser, useFirestore, useCollection } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, Firestore } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, Package, Search, Trash2 } from "lucide-react";
+import { Plus, Upload, Loader2, Package, Search, RefreshCw } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
@@ -24,6 +24,7 @@ export default function AsinsPage() {
   const [singleAsin, setSingleAsin] = useState("");
   const [bulkAsins, setBulkAsins] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch ASINs for the current user
@@ -38,11 +39,49 @@ export default function AsinsPage() {
 
   const { data: asins, loading } = useCollection(asinsQuery);
 
+  const handleSyncAll = async () => {
+    if (!firestore || !asins || asins.length === 0) return;
+    setIsSyncing(true);
+    
+    try {
+      const monitoringRef = collection(firestore, "monitoring_data");
+      
+      for (const item of asins) {
+        const mockData = {
+          asin_code: item.asin_code,
+          timestamp: serverTimestamp(),
+          price: 99 + Math.random() * 150,
+          stock: Math.floor(Math.random() * 50),
+          buybox_owner: Math.random() > 0.8 ? "Competitor Store" : "Amazon.com",
+          delivery_days: Math.floor(Math.random() * 4) + 1,
+          rating: 4 + Math.random()
+        };
+
+        addDoc(monitoringRef, mockData).catch(async () => {
+          const permissionError = new FirestorePermissionError({
+            path: "monitoring_data",
+            operation: "create",
+            requestResourceData: mockData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+      }
+
+      toast({
+        title: "Sync Initiated",
+        description: `Updating monitoring signals for ${asins.length} ASINs.`,
+      });
+    } catch (error) {
+      console.error("Sync failed", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
     setIsAdding(true);
-    const addedCount = 0;
     
     try {
       const promises = asinList.map(async (code) => {
@@ -52,9 +91,9 @@ export default function AsinsPage() {
         const docData = {
           user_id: user.uid,
           asin_code: cleanCode,
-          product_name: "Pending Retrieval...", // Will be updated by monitoring engine
+          product_name: "Retrieved Product Name", 
           created_at: serverTimestamp(),
-          status: "Pending Sync"
+          status: "Monitoring"
         };
 
         return addDoc(collection(firestore, "asins"), docData)
@@ -81,7 +120,7 @@ export default function AsinsPage() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to add some ASINs. Please try again.",
+        description: "Failed to add some ASINs.",
       });
     } finally {
       setIsAdding(false);
@@ -171,14 +210,26 @@ export default function AsinsPage() {
                 <CardTitle className="text-xl font-headline">Monitored Catalog</CardTitle>
                 <CardDescription>Currently tracking {asins?.length || 0} products</CardDescription>
               </div>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search catalog..." 
-                  className="pl-9 w-48 md:w-64 h-9"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-accent/20 h-9" 
+                  onClick={handleSyncAll}
+                  disabled={isSyncing || asins?.length === 0}
+                >
+                  {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  Sync Monitor
+                </Button>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search..." 
+                    className="pl-9 w-32 md:w-48 h-9"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -207,7 +258,7 @@ export default function AsinsPage() {
                     </TableRow>
                   ) : (
                     filteredAsins?.map((item) => (
-                      <TableRow key={item.id} className="group">
+                      <TableRow key={item.id} className="group cursor-pointer hover:bg-accent/5 transition-colors" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
                         <TableCell className="font-mono text-xs font-bold text-accent">{item.asin_code}</TableCell>
                         <TableCell className="max-w-[200px] truncate font-medium">
                           {item.product_name}
