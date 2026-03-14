@@ -116,6 +116,7 @@ export default function AsinsPage() {
             alert_type: "SALES_DROP",
             reason: reason,
             severity: "high",
+            status: "active",
             timestamp: serverTimestamp(),
           };
 

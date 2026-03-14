@@ -64,6 +64,7 @@
         "alert_type": { "type": "string", "enum": ["SALES_DROP", "OPERATIONAL"] },
         "reason": { "type": "string" },
         "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["active", "resolved"] },
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["asin_code", "alert_type", "timestamp"]
