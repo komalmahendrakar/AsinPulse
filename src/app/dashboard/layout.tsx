@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2 } from "lucide-react";
+import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useAuth, useUser } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -77,7 +77,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 { icon: <HelpCircle className="h-4 w-4" />, label: "Help Center", href: "/dashboard/help" },
               ].map((item) => (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild className="h-10 px-4">
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={pathname === item.href}
+                    className="h-10 px-4 rounded-md"
+                  >
                     <Link href={item.href} className="flex items-center gap-3">
                       {item.icon}
                       <span className="text-sm font-medium">{item.label}</span>
@@ -110,14 +114,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <h2 className="text-xl font-semibold font-headline">
                 {pathname === "/dashboard" ? "Overview" : 
                  pathname.includes("/asin/") ? "ASIN Details" : 
-                 pathname === "/dashboard/asins" ? "Monitored ASINs" : "Dashboard"}
+                 pathname === "/dashboard/asins" ? "Monitored ASINs" : 
+                 pathname === "/dashboard/settings" ? "Settings" : "Dashboard"}
               </h2>
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden md:flex items-center px-4 py-2 bg-card border rounded-lg text-sm gap-3">
                 <span className="text-muted-foreground">Account Status:</span>
                 <span className="text-accent font-medium flex items-center gap-1.5">
-                  <div className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" /> Pro Plan
+                  <ShieldCheck className="h-3.5 w-3.5" /> Pro Plan
                 </span>
               </div>
             </div>

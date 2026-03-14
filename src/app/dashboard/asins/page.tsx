@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useUser, useFirestore, useCollection } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Upload, Loader2, RefreshCw, Zap } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
@@ -50,21 +50,25 @@ export default function AsinsPage() {
       
       let alertsCount = 0;
 
+      // Simulated Scheduler Logic for scaling to 1000 ASINs
+      // In production, this would be a Cloud Function loop.
       for (const item of asins) {
-        // 1. Generate & Save Monitoring Signals
-        const isOutOfStock = Math.random() > 0.8;
-        const buyBoxLost = Math.random() > 0.85;
-        const priceHike = Math.random() > 0.9;
-        const shippingDelay = Math.random() > 0.9;
-        const badReview = Math.random() > 0.95;
+        // 1. Fetch Signal (Simulated)
+        const isOutOfStock = Math.random() > 0.85;
+        const buyBoxLost = Math.random() > 0.9;
+        const priceHike = Math.random() > 0.92;
+        const shippingDelay = Math.random() > 0.95;
+        const badReview = Math.random() > 0.98;
 
-        const currentPrice = priceHike ? 159.99 : 124.99;
+        const basePrice = 124.99;
+        const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
+        
         const mockMonitoring = {
           asin_code: item.asin_code,
           timestamp: serverTimestamp(),
-          price: currentPrice,
+          price: Number(currentPrice.toFixed(2)),
           stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
-          buybox_owner: buyBoxLost ? "Competitor Prime" : "Your Store",
+          buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
           delivery_days: shippingDelay ? 7 : 2,
           rating: badReview ? 3.5 : 4.8
         };
@@ -77,18 +81,18 @@ export default function AsinsPage() {
           }));
         });
 
-        // 2. Generate Sales History
+        // 2. Performance Audit
         const dailyAverage = 50;
         const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
         const todaySales = hasIssue 
-          ? Math.floor(dailyAverage * 0.2) 
-          : Math.floor(dailyAverage * (0.9 + Math.random() * 0.2));
+          ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
+          : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
 
         const todaySalesData = {
           asin_code: item.asin_code,
           date: new Date().toISOString().split('T')[0],
           units_sold: todaySales,
-          revenue: todaySales * currentPrice,
+          revenue: Number((todaySales * currentPrice).toFixed(2)),
           user_id: user.uid
         };
 
@@ -100,13 +104,13 @@ export default function AsinsPage() {
           }));
         });
 
-        // 3. Sales Drop Detection & Root Cause Analysis & Email Alerts
+        // 3. Root Cause Logic
         if (todaySales < (dailyAverage * 0.7)) {
-          let reason = "UNSPECIFIED_TREND";
+          let reason = "SALES_VELOCITY_DROP";
           
           if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
           else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
-          else if (mockMonitoring.price > 124.99 * 1.05) reason = "PRICE_INCREASED";
+          else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
           else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
           else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
 
@@ -128,12 +132,12 @@ export default function AsinsPage() {
              }));
           });
 
-          // Queue Email Alert
+          // Queue Alert Email
           const mailData = {
             to: user.email,
             message: {
-              subject: `Amazon Alert – ASIN Issue Detected: ${item.asin_code}`,
-              text: `ASIN: ${item.asin_code}\nIssue: ${reason.replace(/_/g, ' ')}\nSeverity: High\n\nPlease log in to your dashboard for detailed root cause analysis.`
+              subject: `Amazon Alert – Issue Detected: ${item.asin_code}`,
+              text: `ASIN: ${item.asin_code}\nIssue: ${reason.replace(/_/g, ' ')}\nSeverity: High\n\nPlease check your dashboard for resolution steps.`
             }
           };
 
@@ -149,9 +153,14 @@ export default function AsinsPage() {
         }
       }
 
+      // Update Last Sync on User profile
+      await updateDoc(doc(firestore, "users", user.uid), {
+        last_sync_at: serverTimestamp()
+      });
+
       toast({
-        title: "Sync Complete",
-        description: `Analyzed ${asins.length} products. Detected ${alertsCount} issues and queued email alerts.`,
+        title: "Simulation Complete",
+        description: `Audited ${asins.length} ASINs. Detected ${alertsCount} operational issues and queued alerts.`,
       });
     } catch (error) {
       console.error("Sync failed", error);
@@ -170,18 +179,18 @@ export default function AsinsPage() {
         const docData = {
           user_id: user.uid,
           asin_code: cleanCode,
-          product_name: `Product ${cleanCode}`, 
+          product_name: `Catalog Item ${cleanCode}`, 
           created_at: serverTimestamp(),
           status: "Monitoring"
         };
         return addDoc(collection(firestore, "asins"), docData);
       });
       await Promise.all(promises);
-      toast({ title: "Success", description: `Added ${asinList.length} ASIN(s).` });
+      toast({ title: "Success", description: `Enrolled ${asinList.length} ASIN(s) into monitoring job.` });
       setSingleAsin("");
       setBulkAsins("");
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to add ASINs." });
+      toast({ variant: "destructive", title: "Error", description: "Enrollment failed." });
     } finally {
       setIsAdding(false);
     }
@@ -222,6 +231,7 @@ export default function AsinsPage() {
                   value={singleAsin}
                   onChange={(e) => setSingleAsin(e.target.value)}
                   disabled={isAdding}
+                  className="bg-background/50"
                 />
                 <Button type="submit" disabled={isAdding || !singleAsin}>
                   {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
@@ -238,14 +248,14 @@ export default function AsinsPage() {
             <CardContent>
               <form onSubmit={handleBulkSubmit} className="space-y-4">
                 <Textarea 
-                  placeholder="Paste ASINs here..." 
-                  className="min-h-[120px] font-mono text-sm"
+                  placeholder="Paste ASINs separated by new lines or commas..." 
+                  className="min-h-[120px] font-mono text-sm bg-background/50"
                   value={bulkAsins}
                   onChange={(e) => setBulkAsins(e.target.value)}
                   disabled={isAdding}
                 />
                 <Button type="submit" className="w-full" disabled={isAdding || !bulkAsins}>
-                  Import ASINs
+                  Enroll ASINs
                 </Button>
               </form>
             </CardContent>
@@ -253,19 +263,19 @@ export default function AsinsPage() {
         </div>
         <div className="flex-1">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-xl font-headline">Monitored Catalog</CardTitle>
-                <CardDescription>Currently tracking {asins?.length || 0} products</CardDescription>
+                <CardDescription>Job status for {asins?.length || 0} enrolled products</CardDescription>
               </div>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={handleSyncAll} disabled={isSyncing || asins?.length === 0}>
-                  {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Sync & Detect Issues
+                <Button variant="outline" className="h-9 border-accent/30 text-accent font-bold bg-accent/5 hover:bg-accent/10" onClick={handleSyncAll} disabled={isSyncing || asins?.length === 0}>
+                  {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
+                  Trigger Scheduler Run
                 </Button>
                 <Input 
-                  placeholder="Search..." 
-                  className="w-32 md:w-48 h-9"
+                  placeholder="Search catalog..." 
+                  className="w-32 md:w-48 h-9 bg-background/50"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -274,24 +284,35 @@ export default function AsinsPage() {
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>ASIN</TableHead>
-                    <TableHead>Product Name</TableHead>
-                    <TableHead>Date Added</TableHead>
-                    <TableHead>Status</TableHead>
+                  <TableRow className="bg-muted/20">
+                    <TableHead className="font-bold">ASIN</TableHead>
+                    <TableHead className="font-bold">Label</TableHead>
+                    <TableHead className="font-bold">Enrolled On</TableHead>
+                    <TableHead className="font-bold">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto text-accent" /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-accent" /></TableCell></TableRow>
                   ) : filteredAsins?.map((item) => (
-                    <TableRow key={item.id} className="cursor-pointer hover:bg-accent/5" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
+                    <TableRow key={item.id} className="cursor-pointer group hover:bg-accent/5" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
                       <TableCell className="font-mono text-xs font-bold text-accent">{item.asin_code}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{item.product_name}</TableCell>
+                      <TableCell className="max-w-[200px] truncate font-medium">{item.product_name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{item.created_at?.toDate().toLocaleDateString() || "Just now"}</TableCell>
-                      <TableCell><Badge variant="outline" className="bg-accent/5 text-accent">{item.status || "Monitoring"}</Badge></TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-green-500/5 text-green-500 border-green-500/20 px-3">
+                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin duration-[3000ms]" /> {item.status || "Monitoring"}
+                        </Badge>
+                      </TableCell>
                     </TableRow>
                   ))}
+                  {!loading && (!filteredAsins || filteredAsins.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-20 text-muted-foreground italic">
+                        No ASINs enrolled in monitoring. Add your first product to start tracking.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
