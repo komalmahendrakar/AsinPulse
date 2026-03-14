@@ -52,8 +52,8 @@ service cloud.firestore {
       allow create: if isDataOwner();
     }
 
-    // Logs: Users can read their own logs and create new ones for system auditing
-    match /logs/{logId} {
+    // System Logs: Users can read their own logs and create new ones for system auditing
+    match /system_logs/{logId} {
       allow read: if belongsToUser();
       allow create: if isDataOwner();
     }

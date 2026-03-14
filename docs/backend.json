@@ -74,18 +74,18 @@
       },
       "required": ["user_id", "asin_code", "alert_type", "timestamp"]
     },
-    "Log": {
-      "title": "Log",
-      "description": "System error and activity logs for monitoring jobs.",
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Audit trail for system events and job executions.",
       "type": "object",
       "properties": {
         "user_id": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "function_name": { "type": "string" },
-        "error_message": { "type": "string" },
-        "asin_code": { "type": "string" }
+        "event_type": { "type": "string", "enum": ["JOB_START", "JOB_COMPLETE", "ALERT_CREATED", "FUNCTION_ERROR"] },
+        "description": { "type": "string" },
+        "function_name": { "type": "string" }
       },
-      "required": ["user_id", "timestamp", "function_name"]
+      "required": ["user_id", "timestamp", "event_type", "description"]
     },
     "Mail": {
       "title": "Mail",
@@ -128,9 +128,9 @@
       "schema": "Alert",
       "description": "System generated alerts"
     },
-    "/logs/{logId}": {
-      "schema": "Log",
-      "description": "System error logs"
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "System audit and error logs"
     },
     "/mail/{mailId}": {
       "schema": "Mail",
