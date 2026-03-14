@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter, setDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert, Bug, Activity } from "lucide-react";
+import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert, Activity } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
-import { errorEmitter } from "@/firebase/error-emitter";
-import { FirestorePermissionError } from "@/firebase/errors";
+import { executeSecureSyncBatch } from "@/app/actions/sync-asins";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 100,
@@ -23,23 +22,6 @@ const PLAN_LIMITS: Record<string, number> = {
 };
 
 const BATCH_SIZE = 50;
-const RATE_LIMIT_MAX_REQUESTS = 10;
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
-  let lastError: any;
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (i < retries - 1) {
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-      }
-    }
-  }
-  throw lastError;
-}
 
 export default function AsinsPage() {
   const { user } = useUser();
@@ -74,194 +56,39 @@ export default function AsinsPage() {
   const currentLimit = PLAN_LIMITS[currentPlan] || 100;
   const currentCount = asins?.length || 0;
 
-  // Rate limiting logic
-  const checkRateLimit = (): boolean => {
-    const now = Date.now();
-    const storedHistory = localStorage.getItem(`asin_request_history_${user?.uid}`);
-    let history: number[] = storedHistory ? JSON.parse(storedHistory) : [];
-    
-    // Filter history to last 60 seconds
-    history = history.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW_MS);
-    
-    if (history.length >= RATE_LIMIT_MAX_REQUESTS) {
-      return false;
-    }
-    
-    history.push(now);
-    localStorage.setItem(`asin_request_history_${user?.uid}`, JSON.stringify(history));
-    return true;
-  };
-
-  const logSystemEvent = (eventType: string, description: string, functionName: string, alertId?: string) => {
-    if (!firestore || !user?.uid) return;
-    addDoc(collection(firestore, "system_logs"), {
-      user_id: user.uid,
-      timestamp: serverTimestamp(),
-      event_type: eventType,
-      description: description,
-      function_name: functionName,
-      ...(alertId && { alert_id: alertId })
-    }).catch(e => console.error("Critical: Failed to log system event", e));
-  };
-
   const handleSyncAll = async () => {
-    if (!firestore || !user?.uid || !user?.email) return;
+    if (!firestore || !user?.uid || !user?.email || !asins) return;
     setIsSyncing(true);
-    setSyncProgress({ current: 0, total: asins?.length || 0 });
+    setSyncProgress({ current: 0, total: asins.length });
     
-    logSystemEvent("JOB_START", `Batch monitoring job initiated for ${asins?.length || 0} ASINs`, "handleSyncAll");
+    let totalAlerts = 0;
+    let totalProcessed = 0;
 
     try {
-      const monitoringRef = collection(firestore, "monitoring_data");
-      const salesRef = collection(firestore, "sales_data");
-      const alertsRef = collection(firestore, "alerts");
-      const mailRef = collection(firestore, "mail");
-      
-      let lastVisible = null;
-      let totalAlerts = 0;
-      let totalProcessed = 0;
-
-      while (true) {
-        let q = query(
-          collection(firestore, "asins"),
-          where("user_id", "==", user.uid),
-          orderBy("created_at", "desc"),
-          limit(BATCH_SIZE)
-        );
-
-        if (lastVisible) {
-          q = query(q, startAfter(lastVisible));
-        }
-
-        const snapshot = await getDocs(q);
-        if (!snapshot || snapshot.empty) break;
-
-        lastVisible = snapshot.docs[snapshot.docs.length - 1];
-
-        for (const docSnap of snapshot.docs) {
-          const item = docSnap.data();
-          const asinCode = item.asin_code;
-
-          try {
-            const isOutOfStock = Math.random() > 0.85;
-            const buyBoxLost = Math.random() > 0.9;
-            const priceHike = Math.random() > 0.92;
-            const shippingDelay = Math.random() > 0.95;
-            const badReview = Math.random() > 0.98;
-
-            const basePrice = 124.99;
-            const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
-            
-            const mockMonitoring = {
-              user_id: user.uid,
-              asin_code: asinCode,
-              timestamp: serverTimestamp(),
-              price: Number(currentPrice.toFixed(2)),
-              stock: isOutOfStock ? 0 : Math.floor(Math.random() * 50) + 1,
-              buybox_owner: buyBoxLost ? "Competitor" : "Your Store",
-              delivery_days: shippingDelay ? 7 : 2,
-              rating: badReview ? 3.5 : 4.8
-            };
-
-            addDoc(monitoringRef, mockMonitoring).catch(async () => {
-              errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: "monitoring_data",
-                operation: "create",
-                requestResourceData: mockMonitoring,
-              }));
-            });
-
-            const dailyAverage = 50;
-            const hasIssue = isOutOfStock || buyBoxLost || priceHike || shippingDelay || badReview;
-            const todaySales = hasIssue 
-              ? Math.floor(dailyAverage * (0.1 + Math.random() * 0.3)) 
-              : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
-
-            const todaySalesData = {
-              user_id: user.uid,
-              asin_code: asinCode,
-              date: new Date().toISOString().split('T')[0],
-              units_sold: todaySales,
-              revenue: Number((todaySales * currentPrice).toFixed(2))
-            };
-
-            addDoc(salesRef, todaySalesData).catch(async () => {
-              errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: "sales_data",
-                operation: "create",
-                requestResourceData: todaySalesData,
-              }));
-            });
-
-            if (todaySales < (dailyAverage * 0.7)) {
-              let reason = "SALES_VELOCITY_DROP";
-              if (mockMonitoring.stock === 0) reason = "OUT_OF_STOCK";
-              else if (mockMonitoring.buybox_owner !== "Your Store") reason = "BUYBOX_LOST";
-              else if (mockMonitoring.price > basePrice * 1.05) reason = "PRICE_INCREASED";
-              else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
-              else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
-
-              const alertDocRef = doc(alertsRef);
-              const alertId = alertDocRef.id;
-
-              const alertData = {
-                user_id: user.uid,
-                asin_code: asinCode,
-                alert_type: "SALES_DROP",
-                reason: reason,
-                severity: "high",
-                status: "active",
-                timestamp: serverTimestamp(),
-              };
-
-              setDoc(alertDocRef, alertData);
-              logSystemEvent("ALERT_CREATED", `Sales drop alert generated for ASIN: ${asinCode} (${reason})`, "handleSyncAll", alertId);
-              
-              const queueMailTask = async () => {
-                await addDoc(mailRef, {
-                  to: user.email,
-                  message: {
-                    subject: "Amazon Alert – ASIN Issue Detected",
-                    text: `ASIN: ${asinCode}\nIssue: ${reason}\nSeverity: High\n\nPerformance has dropped significantly.`
-                  }
-                });
-              };
-
-              withRetry(queueMailTask, 3).catch((error) => {
-                logSystemEvent(
-                  "EMAIL_FAILURE", 
-                  `Persistent email queuing failure for Alert ${alertId} after 3 retries: ${error.message}`, 
-                  "handleSyncAll", 
-                  alertId
-                );
-              });
-
-              totalAlerts++;
-            }
-          } catch (e: any) {
-            logSystemEvent("FUNCTION_ERROR", `Error processing ASIN ${asinCode}: ${e.message}`, "handleSyncAll");
-          }
-
-          totalProcessed++;
-          setSyncProgress(prev => ({ ...prev, current: totalProcessed }));
-        }
-
-        if (snapshot.docs.length < BATCH_SIZE) break;
+      // Processing in secure batches via Server Actions
+      for (let i = 0; i < asins.length; i += BATCH_SIZE) {
+        const batch = asins.slice(i, i + BATCH_SIZE);
+        const results = await executeSecureSyncBatch(user.uid, user.email, batch);
+        
+        totalProcessed += results.processed;
+        totalAlerts += results.alerts;
+        setSyncProgress(prev => ({ ...prev, current: totalProcessed }));
       }
 
-      updateDoc(doc(firestore, "users", user.uid), {
+      await updateDoc(doc(firestore, "users", user.uid), {
         last_sync_at: serverTimestamp()
       });
 
-      logSystemEvent("JOB_COMPLETE", `Batch monitoring job completed. Processed ${totalProcessed} ASINs, detected ${totalAlerts} issues.`, "handleSyncAll");
-
       toast({
         title: "Monitoring Complete",
-        description: `Audited ${totalProcessed} ASINs. Detected ${totalAlerts} issues.`,
+        description: `Audited ${totalProcessed} ASINs securely. Detected ${totalAlerts} issues.`,
       });
     } catch (error: any) {
-      logSystemEvent("FUNCTION_ERROR", `Global sync failure: ${error.message}`, "handleSyncAll");
-      toast({ variant: "destructive", title: "Sync Failure", description: "Critical error encountered. System logged the diagnostic." });
+      toast({ 
+        variant: "destructive", 
+        title: "Sync Failure", 
+        description: error.message || "Failed to execute secure sync." 
+      });
     } finally {
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 0 });
@@ -271,16 +98,6 @@ export default function AsinsPage() {
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
-    // API Rate Limiting Check
-    if (!checkRateLimit()) {
-      toast({
-        variant: "destructive",
-        title: "Rate Limit Exceeded",
-        description: "Too many requests. Please try again later.",
-      });
-      return;
-    }
-
     if (currentCount + asinList.length > currentLimit) {
       toast({ variant: "destructive", title: "Limit Exceeded", description: "ASIN limit reached for your subscription plan." });
       return;
@@ -291,38 +108,23 @@ export default function AsinsPage() {
       const promises = asinList.map(async (code) => {
         const cleanCode = code.trim().toUpperCase();
         if (!cleanCode) return;
-        const docData = {
+        return addDoc(collection(firestore, "asins"), {
           user_id: user.uid,
           asin_code: cleanCode,
           product_name: `Catalog Item ${cleanCode}`, 
           created_at: serverTimestamp(),
           status: "Monitoring"
-        };
-        return addDoc(collection(firestore, "asins"), docData);
+        });
       });
       await Promise.all(promises);
       toast({ title: "Success", description: `Enrolled ${asinList.length} ASIN(s) into monitoring job.` });
       setSingleAsin("");
       setBulkAsins("");
     } catch (error: any) {
-      logSystemEvent("FUNCTION_ERROR", `Enrollment failed: ${error.message}`, "handleAddAsins");
       toast({ variant: "destructive", title: "Error", description: "Enrollment failed." });
     } finally {
       setIsAdding(false);
     }
-  };
-
-  const handleSingleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!singleAsin.trim()) return;
-    handleAddAsins([singleAsin.trim()]);
-  };
-
-  const handleBulkSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const list = bulkAsins.split(/[\n,]+/).map(a => a.trim()).filter(a => a.length > 0);
-    if (list.length === 0) return;
-    handleAddAsins(list);
   };
 
   const filteredAsins = asins?.filter(a => 
@@ -352,54 +154,34 @@ export default function AsinsPage() {
                   style={{ width: `${Math.min((currentCount / currentLimit) * 100, 100)}%` }}
                 />
               </div>
-              {currentCount >= currentLimit && (
-                <p className="text-[10px] text-destructive mt-2 flex items-center gap-1 font-bold">
-                  <ShieldAlert className="h-3 w-3" /> Upgrade to Agency plan for more slots.
-                </p>
-              )}
             </CardContent>
           </Card>
 
           <Card className="border-accent/20">
             <CardHeader>
               <CardTitle className="text-lg font-headline flex items-center gap-2">
-                <Plus className="h-4 w-4 text-accent" /> Add Single ASIN
+                <Plus className="h-4 w-4 text-accent" /> Add ASIN
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSingleSubmit} className="flex gap-2">
+            <CardContent className="space-y-4">
+              <form onSubmit={(e) => { e.preventDefault(); handleAddAsins([singleAsin]); }} className="flex gap-2">
                 <Input 
                   placeholder="e.g. B00X4WHP5E" 
                   value={singleAsin}
                   onChange={(e) => setSingleAsin(e.target.value)}
                   disabled={isAdding}
-                  className="bg-background/50"
                 />
-                <Button type="submit" disabled={isAdding || !singleAsin}>
-                  {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
-                </Button>
+                <Button type="submit" disabled={isAdding || !singleAsin}>Add</Button>
               </form>
-            </CardContent>
-          </Card>
-          <Card className="border-accent/20">
-            <CardHeader>
-              <CardTitle className="text-lg font-headline flex items-center gap-2">
-                <Upload className="h-4 w-4 text-accent" /> Bulk Import
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleBulkSubmit} className="space-y-4">
-                <Textarea 
-                  placeholder="Paste ASINs separated by new lines or commas..." 
-                  className="min-h-[120px] font-mono text-sm bg-background/50"
-                  value={bulkAsins}
-                  onChange={(e) => setBulkAsins(e.target.value)}
-                  disabled={isAdding}
-                />
-                <Button type="submit" className="w-full" disabled={isAdding || !bulkAsins}>
-                  Enroll ASINs
-                </Button>
-              </form>
+              <Textarea 
+                placeholder="Bulk ASINs..." 
+                value={bulkAsins}
+                onChange={(e) => setBulkAsins(e.target.value)}
+                className="bg-background/50 h-24"
+              />
+              <Button onClick={() => handleAddAsins(bulkAsins.split(/[\n,]+/).filter(a => a.trim()))} className="w-full" variant="outline" disabled={isAdding || !bulkAsins}>
+                Bulk Enroll
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -408,30 +190,29 @@ export default function AsinsPage() {
             <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-xl font-headline">Monitored Catalog</CardTitle>
-                <CardDescription>Job status for {asins?.length || 0} enrolled products</CardDescription>
+                <CardDescription>Job status for {asins?.length || 0} products</CardDescription>
               </div>
               <div className="flex items-center gap-3">
                 <Button 
-                  variant="outline" 
-                  className="h-9 border-accent/30 text-accent font-bold bg-accent/5 hover:bg-accent/10" 
+                  className="h-9 bg-accent text-accent-foreground hover:bg-accent/90" 
                   onClick={handleSyncAll} 
                   disabled={isSyncing || asins?.length === 0}
                 >
                   {isSyncing ? (
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-[10px]">Processing {syncProgress.current}/{syncProgress.total}</span>
+                      <span>{syncProgress.current}/{syncProgress.total}</span>
                     </div>
                   ) : (
                     <>
                       <Zap className="h-4 w-4 mr-2" />
-                      Trigger Scheduler Run
+                      Trigger Secure Sync
                     </>
                   )}
                 </Button>
                 <Input 
                   placeholder="Search catalog..." 
-                  className="w-32 md:w-48 h-9 bg-background/50"
+                  className="w-32 md:w-48 h-9"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -441,34 +222,25 @@ export default function AsinsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/20">
-                    <TableHead className="font-bold">ASIN</TableHead>
-                    <TableHead className="font-bold">Label</TableHead>
-                    <TableHead className="font-bold">Enrolled On</TableHead>
-                    <TableHead className="font-bold">Status</TableHead>
+                    <TableHead>ASIN</TableHead>
+                    <TableHead>Label</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={4} className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-accent" /></TableCell></TableRow>
+                    <TableRow><TableCell colSpan={3} className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-accent" /></TableCell></TableRow>
                   ) : filteredAsins?.map((item) => (
-                    <TableRow key={item.id} className="cursor-pointer group hover:bg-accent/5" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
+                    <TableRow key={item.id} className="cursor-pointer hover:bg-accent/5" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
                       <TableCell className="font-mono text-xs font-bold text-accent">{item.asin_code}</TableCell>
-                      <TableCell className="max-w-[200px] truncate font-medium">{item.product_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{item.created_at?.toDate().toLocaleDateString() || "Just now"}</TableCell>
+                      <TableCell className="font-medium">{item.product_name}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-green-500/5 text-green-500 border-green-500/20 px-3">
-                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin duration-[3000ms]" /> {item.status || "Monitoring"}
+                        <Badge variant="outline" className="bg-green-500/5 text-green-500 border-green-500/20">
+                          <RefreshCw className="h-3 w-3 mr-1.5 animate-spin duration-[3000ms]" /> Monitoring
                         </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!loading && (!filteredAsins || filteredAsins.length === 0) && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center py-20 text-muted-foreground italic">
-                        No ASINs enrolled in monitoring. Add your first product to start tracking.
-                      </TableCell>
-                    </TableRow>
-                  )}
                 </TableBody>
               </Table>
             </CardContent>
