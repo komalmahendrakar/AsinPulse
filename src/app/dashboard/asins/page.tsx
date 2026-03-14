@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -50,8 +49,6 @@ export default function AsinsPage() {
       
       let alertsCount = 0;
 
-      // Simulated Scheduler Logic for scaling to 1000 ASINs
-      // In production, this would be a Cloud Function loop.
       for (const item of asins) {
         // 1. Fetch Signal (Simulated)
         const isOutOfStock = Math.random() > 0.85;
@@ -64,6 +61,7 @@ export default function AsinsPage() {
         const currentPrice = priceHike ? basePrice * 1.15 : basePrice;
         
         const mockMonitoring = {
+          user_id: user.uid,
           asin_code: item.asin_code,
           timestamp: serverTimestamp(),
           price: Number(currentPrice.toFixed(2)),
@@ -89,11 +87,11 @@ export default function AsinsPage() {
           : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
 
         const todaySalesData = {
+          user_id: user.uid,
           asin_code: item.asin_code,
           date: new Date().toISOString().split('T')[0],
           units_sold: todaySales,
-          revenue: Number((todaySales * currentPrice).toFixed(2)),
-          user_id: user.uid
+          revenue: Number((todaySales * currentPrice).toFixed(2))
         };
 
         addDoc(salesRef, todaySalesData).catch(async () => {
@@ -154,8 +152,10 @@ export default function AsinsPage() {
       }
 
       // Update Last Sync on User profile
-      await updateDoc(doc(firestore, "users", user.uid), {
+      updateDoc(doc(firestore, "users", user.uid), {
         last_sync_at: serverTimestamp()
+      }).catch(async () => {
+        // Silently fail or log update error
       });
 
       toast({

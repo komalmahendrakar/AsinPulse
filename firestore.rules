@@ -6,14 +6,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Helper to check if the user owns the document
+    // Helper to check if the user owns the document (by ID)
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Helper to check if the user owns the data being written
+    // Helper to check if the user owns the data being written (by user_id field)
     function isDataOwner() {
       return isAuthenticated() && request.auth.uid == request.resource.data.user_id;
+    }
+
+    // Helper to check if the existing data belongs to the user
+    function belongsToUser() {
+      return isAuthenticated() && resource.data.user_id == request.auth.uid;
     }
 
     // User profiles: Only the user can read/write their own profile
@@ -23,31 +28,33 @@ service cloud.firestore {
 
     // ASINs: Users can only manage their own tracked products
     match /asins/{asinId} {
-      allow read: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow read: if belongsToUser();
       allow create: if isDataOwner();
-      allow update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow update, delete: if belongsToUser();
     }
 
-    // Monitoring and Sales Data: Authenticated reads for the dashboard
+    // Monitoring Data: Only readable and creatable by the ASIN owner
     match /monitoring_data/{dataId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated(); // Allowed for prototype simulation
+      allow read: if belongsToUser();
+      allow create: if isDataOwner();
     }
 
+    // Sales Data: Only readable and creatable by the ASIN owner
     match /sales_data/{dataId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated(); // Allowed for prototype simulation
+      allow read: if belongsToUser();
+      allow create: if isDataOwner();
     }
 
     // Alerts: Only the owner can see or resolve their alerts
     match /alerts/{alertId} {
-      allow read, update, delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if belongsToUser();
       allow create: if isDataOwner();
     }
 
     // Mail queue: Users can only queue emails for themselves
     match /mail/{mailId} {
       allow create: if isAuthenticated();
+      allow read: if false; // Only readable by Admin/System
     }
   }
 }

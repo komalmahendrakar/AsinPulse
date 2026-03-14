@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "User": {
@@ -34,6 +33,7 @@
       "description": "Historical snapshots of product signals.",
       "type": "object",
       "properties": {
+        "user_id": { "type": "string" },
         "asin_code": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
         "price": { "type": "number" },
@@ -42,19 +42,20 @@
         "delivery_days": { "type": "number" },
         "rating": { "type": "number" }
       },
-      "required": ["asin_code", "timestamp"]
+      "required": ["user_id", "asin_code", "timestamp"]
     },
     "SalesData": {
       "title": "SalesData",
       "description": "Historical sales performance for an ASIN.",
       "type": "object",
       "properties": {
+        "user_id": { "type": "string" },
         "asin_code": { "type": "string" },
         "date": { "type": "string", "format": "date" },
         "units_sold": { "type": "number" },
         "revenue": { "type": "number" }
       },
-      "required": ["asin_code", "date"]
+      "required": ["user_id", "asin_code", "date"]
     },
     "Alert": {
       "title": "Alert",
@@ -70,7 +71,7 @@
         "status": { "type": "string", "enum": ["active", "resolved"] },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["asin_code", "alert_type", "timestamp"]
+      "required": ["user_id", "asin_code", "alert_type", "timestamp"]
     },
     "Mail": {
       "title": "Mail",
