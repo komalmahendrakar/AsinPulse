@@ -8,6 +8,8 @@
       "properties": {
         "user_id": { "type": "string" },
         "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["user", "admin"], "default": "user" },
+        "status": { "type": "string", "enum": ["active", "suspended"], "default": "active" },
         "subscription_plan": { "type": "string", "enum": ["starter", "agency", "enterprise"] },
         "created_at": { "type": "string", "format": "date-time" },
         "monitoring_frequency": { "type": "string", "default": "hourly" },

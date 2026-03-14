@@ -7,6 +7,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper to check if the user has admin role
+    function isAdmin() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     // Helper to check if the user owns the document (by ID)
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
@@ -22,52 +27,53 @@ service cloud.firestore {
       return isAuthenticated() && resource.data.user_id == request.auth.uid;
     }
 
-    // User profiles: Only the user can read/write their own profile
+    // User profiles: Users can manage their own, Admins can manage all
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
     }
 
-    // ASINs: Users can only manage their own tracked products
+    // ASINs: Users manage their own, Admins view all
     match /asins/{asinId} {
-      allow read: if belongsToUser();
+      allow read: if belongsToUser() || isAdmin();
       allow create: if isDataOwner();
-      allow update, delete: if belongsToUser();
+      allow update, delete: if belongsToUser() || isAdmin();
     }
 
-    // Monitoring Data: Only readable and creatable by the ASIN owner
+    // Monitoring Data
     match /monitoring_data/{dataId} {
-      allow read: if belongsToUser();
+      allow read: if belongsToUser() || isAdmin();
       allow create: if isDataOwner();
     }
 
-    // Sales Data: Only readable and creatable by the ASIN owner
+    // Sales Data
     match /sales_data/{dataId} {
-      allow read: if belongsToUser();
+      allow read: if belongsToUser() || isAdmin();
       allow create: if isDataOwner();
     }
 
-    // Alerts: Only the owner can see or resolve their alerts
+    // Alerts
     match /alerts/{alertId} {
-      allow read, update, delete: if belongsToUser();
+      allow read, update, delete: if belongsToUser() || isAdmin();
       allow create: if isDataOwner();
     }
 
-    // System Logs: Users can read their own logs and create new ones for system auditing
+    // System Logs
     match /system_logs/{logId} {
-      allow read: if belongsToUser();
+      allow read: if belongsToUser() || isAdmin();
       allow create: if isDataOwner();
     }
 
-    // Mail queue: Users can only queue emails for themselves
+    // Mail queue
     match /mail/{mailId} {
       allow create: if isAuthenticated();
-      allow read: if false; // Only readable by Admin/System
+      allow read: if isAdmin();
     }
 
-    // Usage Metrics: Users can read their own daily usage stats
+    // Usage Metrics
     match /usage_metrics/{metricId} {
-      allow read: if belongsToUser();
-      allow write: if isDataOwner(); // In a production app, this would likely be restricted to server-side only
+      allow read: if belongsToUser() || isAdmin();
+      allow write: if isDataOwner() || isAdmin();
     }
   }
 }

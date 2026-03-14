@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useAuth, useUser, useFirestore, useDoc } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -46,6 +47,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!user) return null;
 
+  const isAdmin = profile?.role === "admin";
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background text-foreground">
@@ -76,6 +79,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+
+              {isAdmin && (
+                <div className="mt-6">
+                  <p className="px-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Platform Admin</p>
+                  {[
+                    { icon: <ShieldAlert className="h-4 w-4" />, label: "Control Center", href: "/dashboard/admin" },
+                    { icon: <ShieldCheck className="h-4 w-4" />, label: "Manage Users", href: "/dashboard/admin/users" },
+                    { icon: <Activity className="h-4 w-4" />, label: "Global Alerts", href: "/dashboard/admin/alerts" },
+                  ].map((item) => (
+                    <SidebarMenuItem key={item.label}>
+                      <SidebarMenuButton 
+                        asChild 
+                        isActive={pathname === item.href}
+                        className="h-10 px-4 rounded-md text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Link href={item.href} className="flex items-center gap-3">
+                          {item.icon}
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </div>
+              )}
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter className="p-4 mt-auto">
@@ -121,6 +148,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SidebarTrigger />
               <h2 className="text-xl font-semibold font-headline">
                 {pathname === "/dashboard" ? "Overview" : 
+                 pathname.includes("/admin") ? "Admin Panel" :
                  pathname.includes("/asin/") ? "ASIN Details" : 
                  pathname === "/dashboard/asins" ? "Monitored ASINs" : 
                  pathname === "/dashboard/settings" ? "Settings" : "Dashboard"}
@@ -131,6 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="text-muted-foreground">Account Status:</span>
                 <span className="text-accent font-medium flex items-center gap-1.5 capitalize">
                   <ShieldCheck className="h-3.5 w-3.5" /> {profile?.subscription_plan || "Starter"} Plan
+                  {isAdmin && <Badge variant="destructive" className="ml-2 text-[8px] h-4">ADMIN</Badge>}
                 </span>
               </div>
             </div>
