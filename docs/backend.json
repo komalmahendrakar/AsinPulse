@@ -1,0 +1,94 @@
+
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and subscription data.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "subscription_plan": { "type": "string", "enum": ["free", "pro"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "email"]
+    },
+    "ASIN": {
+      "title": "ASIN",
+      "description": "Amazon Standard Identification Number monitored by a user.",
+      "type": "object",
+      "properties": {
+        "asin_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "asin_code": { "type": "string" },
+        "product_name": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "asin_code"]
+    },
+    "MonitoringData": {
+      "title": "MonitoringData",
+      "description": "Historical snapshots of product signals.",
+      "type": "object",
+      "properties": {
+        "asin_code": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "buybox_owner": { "type": "string" },
+        "delivery_days": { "type": "number" },
+        "rating": { "type": "number" }
+      }
+    },
+    "SalesData": {
+      "title": "SalesData",
+      "description": "Historical sales performance for an ASIN.",
+      "type": "object",
+      "properties": {
+        "asin_code": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "units_sold": { "type": "number" },
+        "revenue": { "type": "number" }
+      }
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "Detected issues or sales drops.",
+      "type": "object",
+      "properties": {
+        "alert_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "asin_code": { "type": "string" },
+        "alert_type": { "type": "string", "enum": ["SALES_DROP", "OPERATIONAL"] },
+        "reason": { "type": "string" },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/asins/{asinId}": {
+      "schema": "ASIN",
+      "description": "Monitored ASINs"
+    },
+    "/asins/{asinId}/monitoring": {
+      "schema": "MonitoringData",
+      "description": "Periodic snapshots of ASIN performance"
+    },
+    "/asins/{asinId}/sales": {
+      "schema": "SalesData",
+      "description": "Daily sales data"
+    },
+    "/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "System generated alerts"
+    }
+  }
+}

@@ -1,13 +1,42 @@
 
 "use client";
 
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, User, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, AlertTriangle, Settings, HelpCircle, Activity, LogOut, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useAuth, useUser } from "@/firebase";
+import { signOut } from "firebase/auth";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useUser();
+  const { auth } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [user, loading, router]);
+
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      router.push("/");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <SidebarProvider>
@@ -58,12 +87,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               ))}
               <SidebarMenuItem className="mt-4 pt-4 border-t">
                 <div className="flex items-center gap-3 px-4 py-2">
-                  <div className="h-8 w-8 rounded-full bg-accent/20 flex items-center justify-center text-accent font-bold">JD</div>
-                  <div className="flex-1 overflow-hidden">
-                    <p className="text-sm font-semibold truncate">John Doe</p>
-                    <p className="text-xs text-muted-foreground truncate">john@example.com</p>
+                  <div className="h-8 w-8 rounded-full bg-accent/20 flex items-center justify-center text-accent font-bold">
+                    {user.email?.substring(0, 2).toUpperCase()}
                   </div>
-                  <LogOut className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-destructive transition-colors" />
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-sm font-semibold truncate">{user.email?.split('@')[0]}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  </div>
+                  <LogOut 
+                    className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-destructive transition-colors" 
+                    onClick={handleLogout}
+                  />
                 </div>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -75,7 +109,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <SidebarTrigger />
               <h2 className="text-xl font-semibold font-headline">
                 {pathname === "/dashboard" ? "Overview" : 
-                 pathname.includes("/asin/") ? "ASIN Details" : "Dashboard"}
+                 pathname.includes("/asin/") ? "ASIN Details" : 
+                 pathname === "/dashboard/asins" ? "Monitored ASINs" : "Dashboard"}
               </h2>
             </div>
             <div className="flex items-center gap-4">

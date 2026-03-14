@@ -20,10 +20,10 @@ export default function LandingPage() {
           <Link href="#pricing" className="text-sm font-medium hover:text-accent transition-colors">Pricing</Link>
         </nav>
         <div className="flex items-center gap-4">
-          <Link href="/dashboard">
+          <Link href="/login">
             <Button variant="ghost">Log in</Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/signup">
             <Button className="bg-primary hover:bg-primary/90">Get Started</Button>
           </Link>
         </div>
@@ -40,7 +40,7 @@ export default function LandingPage() {
               ASIN Pulse monitors your Amazon listings 24/7. Detect sales drops instantly and get AI-powered root cause analysis to take immediate action.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/dashboard">
+              <Link href="/signup">
                 <Button size="lg" className="bg-primary text-primary-foreground px-8 py-6 text-lg rounded-xl shadow-lg shadow-primary/20">
                   Start Free Trial
                 </Button>
