@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter, setDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,22 @@ const PLAN_LIMITS: Record<string, number> = {
 };
 
 const BATCH_SIZE = 50;
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < retries - 1) {
+        // Exponential backoff
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
 
 export default function AsinsPage() {
   const { user } = useUser();
@@ -57,14 +73,15 @@ export default function AsinsPage() {
   const currentLimit = PLAN_LIMITS[currentPlan] || 100;
   const currentCount = asins?.length || 0;
 
-  const logSystemEvent = (eventType: string, description: string, functionName: string) => {
+  const logSystemEvent = (eventType: string, description: string, functionName: string, alertId?: string) => {
     if (!firestore || !user?.uid) return;
     addDoc(collection(firestore, "system_logs"), {
       user_id: user.uid,
       timestamp: serverTimestamp(),
       event_type: eventType,
       description: description,
-      function_name: functionName
+      function_name: functionName,
+      ...(alertId && { alert_id: alertId })
     }).catch(e => console.error("Critical: Failed to log system event to Firestore", e));
   };
 
@@ -165,6 +182,10 @@ export default function AsinsPage() {
               else if (mockMonitoring.delivery_days > 2) reason = "DELIVERY_DELAY";
               else if (mockMonitoring.rating < 4.0) reason = "NEGATIVE_REVIEW_IMPACT";
 
+              // Generate ID locally to link SystemLogs to the Alert
+              const alertDocRef = doc(alertsRef);
+              const alertId = alertDocRef.id;
+
               const alertData = {
                 user_id: user.uid,
                 asin_code: asinCode,
@@ -175,15 +196,27 @@ export default function AsinsPage() {
                 timestamp: serverTimestamp(),
               };
 
-              addDoc(alertsRef, alertData);
-              logSystemEvent("ALERT_CREATED", `Sales drop alert generated for ASIN: ${asinCode} (${reason})`, "handleSyncAll");
+              setDoc(alertDocRef, alertData);
+              logSystemEvent("ALERT_CREATED", `Sales drop alert generated for ASIN: ${asinCode} (${reason})`, "handleSyncAll", alertId);
               
-              addDoc(mailRef, {
-                to: user.email,
-                message: {
-                  subject: "Amazon Alert – ASIN Issue Detected",
-                  text: `ASIN: ${asinCode}\nIssue: ${reason}\nSeverity: High\n\nPerformance has dropped significantly.`
-                }
+              const queueMailTask = async () => {
+                await addDoc(mailRef, {
+                  to: user.email,
+                  message: {
+                    subject: "Amazon Alert – ASIN Issue Detected",
+                    text: `ASIN: ${asinCode}\nIssue: ${reason}\nSeverity: High\n\nPerformance has dropped significantly.`
+                  }
+                });
+              };
+
+              // Resilient email queuing with retries
+              withRetry(queueMailTask, 3).catch((error) => {
+                logSystemEvent(
+                  "EMAIL_FAILURE", 
+                  `Persistent email queuing failure for Alert ${alertId} after 3 retries: ${error.message}`, 
+                  "handleSyncAll", 
+                  alertId
+                );
               });
 
               totalAlerts++;

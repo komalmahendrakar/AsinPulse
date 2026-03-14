@@ -81,9 +81,10 @@
       "properties": {
         "user_id": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "event_type": { "type": "string", "enum": ["JOB_START", "JOB_COMPLETE", "ALERT_CREATED", "FUNCTION_ERROR"] },
+        "event_type": { "type": "string", "enum": ["JOB_START", "JOB_COMPLETE", "ALERT_CREATED", "FUNCTION_ERROR", "EMAIL_FAILURE"] },
         "description": { "type": "string" },
-        "function_name": { "type": "string" }
+        "function_name": { "type": "string" },
+        "alert_id": { "type": "string" }
       },
       "required": ["user_id", "timestamp", "event_type", "description"]
     },
