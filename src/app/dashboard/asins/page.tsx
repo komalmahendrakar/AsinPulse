@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, Package, Search, RefreshCw } from "lucide-react";
+import { Plus, Upload, Loader2, Package, Search, RefreshCw, AlertTriangle } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
@@ -40,14 +40,19 @@ export default function AsinsPage() {
   const { data: asins, loading } = useCollection(asinsQuery);
 
   const handleSyncAll = async () => {
-    if (!firestore || !asins || asins.length === 0) return;
+    if (!firestore || !user?.uid || !asins || asins.length === 0) return;
     setIsSyncing(true);
     
     try {
       const monitoringRef = collection(firestore, "monitoring_data");
+      const salesRef = collection(firestore, "sales_data");
+      const alertsRef = collection(firestore, "alerts");
       
+      let alertsCount = 0;
+
       for (const item of asins) {
-        const mockData = {
+        // 1. Generate & Save Monitoring Signals
+        const mockMonitoring = {
           asin_code: item.asin_code,
           timestamp: serverTimestamp(),
           price: 99 + Math.random() * 150,
@@ -57,19 +62,78 @@ export default function AsinsPage() {
           rating: 4 + Math.random()
         };
 
-        addDoc(monitoringRef, mockData).catch(async () => {
-          const permissionError = new FirestorePermissionError({
+        addDoc(monitoringRef, mockMonitoring).catch(async () => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: "monitoring_data",
             operation: "create",
-            requestResourceData: mockData,
-          });
-          errorEmitter.emit('permission-error', permissionError);
+            requestResourceData: mockMonitoring,
+          }));
         });
+
+        // 2. Generate Mock Sales History for Detection (Last 7 days + Today)
+        const dailyAverage = 50 + Math.random() * 20;
+        const salesHistory = [];
+        let sevenDayTotal = 0;
+
+        for (let i = 1; i <= 7; i++) {
+          const units = Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
+          sevenDayTotal += units;
+          salesHistory.push(units);
+        }
+
+        const sevenDayAvg = sevenDayTotal / 7;
+        
+        // Simulate a drop for 30% of syncs to demonstrate the feature
+        const shouldDrop = Math.random() > 0.7;
+        const todaySales = shouldDrop 
+          ? Math.floor(sevenDayAvg * 0.4) // 60% drop
+          : Math.floor(dailyAverage * (0.8 + Math.random() * 0.4));
+
+        // Save Today's Sales Data
+        const todaySalesData = {
+          asin_code: item.asin_code,
+          date: new Date().toISOString().split('T')[0],
+          units_sold: todaySales,
+          revenue: todaySales * mockMonitoring.price,
+          user_id: user.uid
+        };
+
+        addDoc(salesRef, todaySalesData).catch(async () => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: "sales_data",
+            operation: "create",
+            requestResourceData: todaySalesData,
+          }));
+        });
+
+        // 3. Sales Drop Detection Logic
+        // today_sales < (7_day_average_sales * 0.7)
+        if (todaySales < (sevenDayAvg * 0.7)) {
+          const dropPercentage = Math.round(((sevenDayAvg - todaySales) / sevenDayAvg) * 100);
+          
+          const alertData = {
+            user_id: user.uid,
+            asin_code: item.asin_code,
+            alert_type: "SALES_DROP",
+            reason: `Critical sales drop detected: ${dropPercentage}% below 7-day average (${Math.round(sevenDayAvg)} units/day).`,
+            severity: "high",
+            timestamp: serverTimestamp(),
+          };
+
+          addDoc(alertsRef, alertData).catch(async () => {
+             errorEmitter.emit('permission-error', new FirestorePermissionError({
+               path: "alerts",
+               operation: "create",
+               requestResourceData: alertData,
+             }));
+          });
+          alertsCount++;
+        }
       }
 
       toast({
-        title: "Sync Initiated",
-        description: `Updating monitoring signals for ${asins.length} ASINs.`,
+        title: "Sync & Detection Complete",
+        description: `Analyzed ${asins.length} products. Detected ${alertsCount} new sales drops.`,
       });
     } catch (error) {
       console.error("Sync failed", error);
@@ -98,12 +162,11 @@ export default function AsinsPage() {
 
         return addDoc(collection(firestore, "asins"), docData)
           .catch(async (err) => {
-             const permissionError = new FirestorePermissionError({
+             errorEmitter.emit('permission-error', new FirestorePermissionError({
                path: "asins",
                operation: "create",
                requestResourceData: docData,
-             });
-             errorEmitter.emit('permission-error', permissionError);
+             }));
           });
       });
 
@@ -219,7 +282,7 @@ export default function AsinsPage() {
                   disabled={isSyncing || asins?.length === 0}
                 >
                   {isSyncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Sync Monitor
+                  Sync & Detect Drops
                 </Button>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
