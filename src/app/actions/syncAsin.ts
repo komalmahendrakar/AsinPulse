@@ -52,8 +52,10 @@ export async function syncAsin(asin: string, userId: string) {
     console.log("Documents found in Firestore:", querySnapshot.size);
 
     if (querySnapshot.empty) {
-      // Log extra context for debugging
-      console.error(`Sync Failure: ASIN ${cleanAsin} for User ${userId} not found in catalog.`);
+      // For debugging: Let's see if the user has ANY asins
+      const allDocs = await getDocs(query(asinsRef, where("user_id", "==", userId)));
+      console.log("All ASINs for user in database:", allDocs.docs.map(d => d.data().asin_code));
+      console.warn(`ASIN ${cleanAsin} not found for user ${userId}. Check if the document exists or if there's a typo.`);
       throw new Error("ASIN document not found in your catalog.");
     }
 
@@ -74,7 +76,7 @@ export async function syncAsin(asin: string, userId: string) {
     await updateDoc(docRef, updateData);
 
     console.log("Firestore updated successfully for ASIN:", cleanAsin);
-    console.log("Update payload:", JSON.stringify(updateData));
+    console.log("Update payload summary:", { title: updateData.title, price: updateData.price });
 
     return { success: true };
   } catch (error: any) {

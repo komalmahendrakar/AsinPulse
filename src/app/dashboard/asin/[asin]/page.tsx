@@ -22,7 +22,9 @@ export default function AsinDetailsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const asin = params.asin as string;
+  
+  // Clean ASIN from URL
+  const asin = (params.asin as string)?.toUpperCase().trim();
   
   const [analyzing, setAnalyzing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -34,7 +36,7 @@ export default function AsinDetailsPage() {
     return query(
       collection(firestore, "asins"),
       where("user_id", "==", user.uid),
-      where("asin_code", "==", asin.toUpperCase()),
+      where("asin_code", "==", asin),
       limit(1)
     );
   }, [firestore, user?.uid, asin]);
@@ -46,7 +48,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin) return null;
     return query(
       collection(firestore, "monitoring_data"),
-      where("asin_code", "==", asin.toUpperCase()),
+      where("asin_code", "==", asin),
       orderBy("timestamp", "asc")
     );
   }, [firestore, asin]);
@@ -57,7 +59,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin || !user?.uid) return null;
     return query(
       collection(firestore, "alerts"),
-      where("asin_code", "==", asin.toUpperCase()),
+      where("asin_code", "==", asin),
       where("user_id", "==", user.uid),
       orderBy("timestamp", "desc"),
       limit(10)
@@ -70,7 +72,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin) return null;
     return query(
       collection(firestore, "sales_data"),
-      where("asin_code", "==", asin.toUpperCase()),
+      where("asin_code", "==", asin),
       orderBy("date", "asc")
     );
   }, [firestore, asin]);
@@ -99,26 +101,30 @@ export default function AsinDetailsPage() {
   }, [salesHistory]);
 
   const handleSyncNow = async () => {
-    if (!user?.uid || !asin) return;
-    console.log("Sync Now triggered for ASIN:", asin, "User:", user.uid);
+    if (!user?.uid || !asin) {
+      console.warn("handleSyncNow blocked: Missing UserID or ASIN", { userId: user?.uid, asin });
+      return;
+    }
+    
+    console.log("Sync Now UI Button Clicked", { asin, userId: user.uid });
     setSyncing(true);
+    
     try {
-      // Pass both the ASIN from URL and the current User UID
       const result = await syncAsin(asin, user.uid);
       if (result.success) {
         toast({
           title: "Sync Successful",
-          description: `Refreshed Amazon data for ${asin}.`,
+          description: `Updated Amazon intelligence for ${asin}.`,
         });
       } else {
         throw new Error(result.error);
       }
     } catch (error: any) {
-      console.error("Dashboard Sync Error:", error.message);
+      console.error("Dashboard Sync Logic Error:", error.message);
       toast({
         variant: "destructive",
         title: "Sync Failed",
-        description: error.message || "Could not retrieve Amazon data.",
+        description: error.message || "The synchronization pipeline failed.",
       });
     } finally {
       setSyncing(false);
