@@ -9,6 +9,23 @@ import { collection, query, where, getDocs, doc, updateDoc, serverTimestamp } fr
 import { fetchAmazonProduct } from '@/lib/rainforest';
 
 /**
+ * Validates a single ASIN before adding to catalog.
+ */
+export async function validateAsin(asin: string, userId: string) {
+  const cleanAsin = asin.trim().toUpperCase();
+  console.log("validateAsin called:", cleanAsin);
+  
+  try {
+    const product = await fetchAmazonProduct(cleanAsin);
+    if (!product) throw new Error("Amazon product not found for this ASIN.");
+    return { success: true, product };
+  } catch (error: any) {
+    console.error("Validation Error:", error.message);
+    return { success: false, error: error.message || "Invalid ASIN or product not found on Amazon." };
+  }
+}
+
+/**
  * Syncs a single ASIN for a user by fetching data from Rainforest API and updating Firestore.
  */
 export async function syncAsin(asin: string, userId: string) {
@@ -32,7 +49,7 @@ export async function syncAsin(asin: string, userId: string) {
     const docId = querySnapshot.docs[0].id;
     const docRef = doc(db, "asins", docId);
 
-    // Fields to store as requested
+    // Fields to store as requested: price, rating, reviews, stock, title, lastSyncedAt
     const updateData = {
       title: productData.title,
       product_name: productData.title,

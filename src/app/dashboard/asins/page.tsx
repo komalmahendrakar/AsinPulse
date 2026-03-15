@@ -13,7 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Loader2, RefreshCw, Zap, Package } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { executeSecureSyncBatch } from "@/app/actions/sync-asins";
-import { fetchAmazonProduct } from "@/lib/rainforest";
+// ✅ ADD THIS
+import { syncAsin, validateAsin } from '@/app/actions/syncAsin';
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 100,
@@ -115,21 +116,23 @@ export default function AsinsPage() {
         const cleanCode = code.trim().toUpperCase();
         if (!cleanCode) continue;
 
-        // 1. Validate ASIN with Rainforest API
         try {
-          const product = await fetchAmazonProduct(cleanCode);
-          
-          if (!product) {
+          // ✅ Call server action instead of fetchAmazonProduct directly
+          const result = await validateAsin(cleanCode, user.uid);
+
+          if (!result.success || !result.product) {
             toast({
               variant: "destructive",
               title: "Validation Failed",
-              description: `ASIN ${cleanCode}: Amazon product not found for this ASIN.`,
+              description: `ASIN ${cleanCode}: ${result.error || "Product not found on Amazon."}`,
             });
             failCount++;
             continue;
           }
 
-          // 2. Add to Firestore with real data
+          const product = result.product;
+
+          // ✅ Add to Firestore with real validated data
           await addDoc(collection(firestore, "asins"), {
             user_id: user.uid,
             asin_code: cleanCode,
