@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "User": {
@@ -20,14 +19,19 @@
     },
     "ASIN": {
       "title": "ASIN",
-      "description": "Amazon Standard Identification Number monitored by a user.",
+      "description": "Amazon Standard Identification Number monitored by a user with its latest performance snapshot.",
       "type": "object",
       "properties": {
         "asin_id": { "type": "string" },
         "user_id": { "type": "string" },
         "asin_code": { "type": "string" },
         "product_name": { "type": "string" },
-        "created_at": { "type": "string", "format": "date-time" }
+        "price": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviews": { "type": "number" },
+        "stock": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
       },
       "required": ["user_id", "asin_code"]
     },

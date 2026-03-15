@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -8,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingDown, ChevronLeft, ArrowUpRight, AlertTriangle, Sparkles, History, ShoppingCart, Box, Star, DollarSign, Loader2, RefreshCw, MessageSquare } from "lucide-react";
+import { TrendingDown, ChevronLeft, AlertTriangle, Sparkles, Box, Star, DollarSign, Loader2, RefreshCw, MessageSquare, ShoppingCart } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart as ReBarChart, Bar } from "recharts";
 import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
@@ -29,14 +28,20 @@ export default function AsinDetailsPage() {
   const [syncing, setSyncing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AiSalesDropRootCauseAnalysisOutput | null>(null);
 
-  // Fetch cached product details
-  const productRef = useMemoFirebase(() => {
-    if (!firestore || !asin) return null;
-    return doc(firestore, "products", asin);
-  }, [firestore, asin]);
-  const { data: productInfo, loading: productLoading } = useDoc(productRef);
+  // Fetch monitored ASIN data from the user's specific catalog
+  const asinsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.uid || !asin) return null;
+    return query(
+      collection(firestore, "asins"),
+      where("user_id", "==", user.uid),
+      where("asin_code", "==", asin),
+      limit(1)
+    );
+  }, [firestore, user?.uid, asin]);
+  const { data: monitoredAsinList, loading: monitoredLoading } = useCollection(asinsQuery);
+  const monitoredAsin = monitoredAsinList?.[0];
 
-  // Fetch monitoring data for snapshots
+  // Fetch monitoring data for snapshots (historical)
   const monitoringQuery = useMemoFirebase(() => {
     if (!firestore || !asin) return null;
     return query(
@@ -47,7 +52,7 @@ export default function AsinDetailsPage() {
   }, [firestore, asin]);
   const { data: monitoringData, loading: monitoringLoading } = useCollection(monitoringQuery);
 
-  // Fetch alerts history for this ASIN
+  // Fetch alerts history
   const alertsQuery = useMemoFirebase(() => {
     if (!firestore || !asin || !user?.uid) return null;
     return query(
@@ -93,16 +98,11 @@ export default function AsinDetailsPage() {
     }));
   }, [salesHistory]);
 
-  const latestStats = useMemo(() => {
-    if (productInfo) return productInfo;
-    if (!monitoringData || monitoringData.length === 0) return null;
-    return monitoringData[monitoringData.length - 1];
-  }, [monitoringData, productInfo]);
-
   const handleSyncNow = async () => {
+    if (!user?.uid) return;
     setSyncing(true);
     try {
-      await syncProductData(asin);
+      await syncProductData(asin, user.uid);
       toast({
         title: "Sync Successful",
         description: `Refreshed Amazon data for ${asin}.`,
@@ -123,9 +123,9 @@ export default function AsinDetailsPage() {
     try {
       const result = await aiSalesDropRootCauseAnalysis({
         asin: asin,
-        salesDropDetails: `Last recorded sales units: ${salesHistory?.[salesHistory.length - 1]?.units_sold || 0}. Analysis triggered due to critical performance drop.`,
-        historicalPerformance: `Current Price: $${latestStats?.price || 'N/A'}. Stock Level: ${latestStats?.stock || 0}. Category Rating: ${latestStats?.rating || 'N/A'}. Reviews: ${latestStats?.reviews || 0}.`,
-        marketContext: "Automated analysis based on cross-correlated monitoring snapshots and sales velocity."
+        salesDropDetails: `Last recorded sales units: ${salesHistory?.[salesHistory.length - 1]?.units_sold || 0}. Analysis triggered due to performance drop.`,
+        historicalPerformance: `Current Price: $${monitoredAsin?.price || 'N/A'}. Stock Level: ${monitoredAsin?.stock || 0}. Rating: ${monitoredAsin?.rating || 'N/A'}. Reviews: ${monitoredAsin?.reviews || 0}.`,
+        marketContext: "Automated analysis based on cross-correlated monitoring snapshots."
       });
       setAnalysisResult(result);
     } catch (error) {
@@ -135,7 +135,7 @@ export default function AsinDetailsPage() {
     }
   };
 
-  if (monitoringLoading || productLoading) {
+  if (monitoringLoading || monitoredLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-accent" />
@@ -162,8 +162,8 @@ export default function AsinDetailsPage() {
               )}
             </div>
             <p className="text-muted-foreground mt-1 flex items-center gap-2 max-w-xl truncate">
-              {productInfo?.title ? (
-                <span className="font-medium text-foreground/80">{productInfo.title}</span>
+              {monitoredAsin?.product_name ? (
+                <span className="font-medium text-foreground/80">{monitoredAsin.product_name}</span>
               ) : (
                 <span className="italic">Fetch Amazon data to see title</span>
               )}
@@ -187,10 +187,10 @@ export default function AsinDetailsPage() {
       {/* KPI Highlight Grid */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
         {[
-          { label: "Price", value: latestStats?.price ? `$${latestStats.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
-          { label: "Stock", value: latestStats?.stock !== undefined ? latestStats.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
-          { label: "Rating", value: latestStats?.rating ? `${latestStats.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
-          { label: "Reviews", value: latestStats?.reviews !== undefined ? latestStats.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
+          { label: "Price", value: monitoredAsin?.price ? `$${monitoredAsin.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
+          { label: "Stock", value: monitoredAsin?.stock !== undefined ? monitoredAsin.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
+          { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
+          { label: "Reviews", value: monitoredAsin?.reviews !== undefined ? monitoredAsin.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
         ].map((stat, i) => (
           <Card key={i} className="bg-card/50 backdrop-blur-sm shadow-sm border-border/50 hover:border-accent/30 transition-all">

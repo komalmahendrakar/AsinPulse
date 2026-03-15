@@ -1,9 +1,7 @@
-
 'use server';
 
 /**
  * @fileOverview Server Action for executing the ASIN monitoring sync securely.
- * Updated to use Rainforest API logic for real data fetching and snapshotting.
  */
 
 import { db } from '@/lib/firebase';
@@ -12,7 +10,7 @@ import { syncProductData } from './product-sync';
 
 /**
  * Executes a secure sync batch for a set of ASINs.
- * Updates daily usage metrics upon completion.
+ * Updates daily usage metrics and creates monitoring snapshots.
  */
 export async function executeSecureSyncBatch(userId: string, userEmail: string, asinBatch: any[]) {
   const results = {
@@ -26,8 +24,8 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
 
   for (const asin of asinBatch) {
     try {
-      // Fetch real data from Rainforest and update product cache
-      const productData = await syncProductData(asin.asin_code);
+      // Fetch data and update both global cache and user ASIN record
+      const productData = await syncProductData(asin.asin_code, userId);
       
       if (!productData) {
         results.errors++;
@@ -46,10 +44,10 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
         reviews: productData.reviews
       };
 
-      // Create snapshot record for history graphs
+      // Create snapshot record for historical analysis
       await addDoc(collection(db, "monitoring_data"), monitoringData);
 
-      // Detection logic for Out of Stock
+      // Detection logic: Out of Stock
       if (productData.stock === 0) {
         const alertData = {
           user_id: userId,
