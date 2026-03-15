@@ -34,7 +34,7 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
       price: product.price,
       rating: product.rating,
       reviews: product.reviews,
-      stock: product.availability,
+      stock: product.stock,
     };
 
     // 1. Update Global Product Cache
@@ -57,8 +57,7 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
           price: product.price,
           rating: product.rating,
           reviews: product.reviews,
-          stock: product.availability,
-          availability_raw: product.availability,
+          stock: product.stock,
           lastUpdated: serverTimestamp(),
           lastSyncedAt: serverTimestamp()
         })

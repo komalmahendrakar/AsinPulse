@@ -137,8 +137,7 @@ export default function AsinsPage() {
             price: product.price,
             rating: product.rating,
             reviews: product.reviews,
-            stock: product.availability.toLowerCase().includes('in stock') ? 99 : 0,
-            availability_raw: product.availability,
+            stock: product.stock,
             created_at: serverTimestamp(),
             lastUpdated: serverTimestamp(),
             status: "Monitoring"

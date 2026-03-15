@@ -9,7 +9,7 @@ export interface AmazonProduct {
   price: number;
   rating: number;
   reviews: number;
-  availability: string;
+  stock: string;
 }
 
 /**
@@ -34,7 +34,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     const data = await response.json();
 
     // Debugging: Log the entire API response in the server console as requested
-    console.log("Rainforest validation response:", JSON.stringify(data, null, 2));
+    console.log("Rainforest API response:", JSON.stringify(data, null, 2));
 
     // Handle Rainforest API-level errors
     if (data.request_info && data.request_info.success === false) {
@@ -42,21 +42,21 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
       throw new Error(data.request_info.message || "Rainforest API request failed.");
     }
 
-    // Exact validation check as requested
-    if (!data.product) {
+    // Validation: Check for either product or product_results
+    const product = data.product || data.product_results;
+
+    if (!product) {
       console.error("Amazon product not found for this ASIN:", asin);
       throw new Error("Amazon product not found for this ASIN.");
     }
 
-    const product = data.product;
-    
-    // Returning metadata using correct mappings
+    // Safely extract fields as requested
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_price?.value || product.buybox_winner?.price?.value || 0,
       rating: product.rating || 0,
       reviews: product.ratings_total || 0,
-      availability: product.availability?.raw || "Unknown"
+      stock: product.availability?.raw || "Unknown"
     };
   } catch (error: any) {
     console.error(`Exception in fetchAmazonProduct for ASIN ${asin}:`, error.message);

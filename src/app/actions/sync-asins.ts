@@ -48,7 +48,9 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
       await addDoc(collection(db, "monitoring_data"), monitoringData);
 
       // Detection logic: Out of Stock
-      if (productData.stock === 0) {
+      const isOutOfStock = productData.stock?.toLowerCase().includes('out of stock') || productData.stock === '0';
+      
+      if (isOutOfStock) {
         const alertData = {
           user_id: userId,
           asin_code: asin.asin_code,

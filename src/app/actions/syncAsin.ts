@@ -32,14 +32,14 @@ export async function syncAsin(asin: string, userId: string) {
     const docId = querySnapshot.docs[0].id;
     const docRef = doc(db, "asins", docId);
 
-    // Fields to store: price, rating, reviews, stock, title, lastSyncedAt
+    // Fields to store as requested
     const updateData = {
       title: productData.title,
       product_name: productData.title,
       price: productData.price,
       rating: productData.rating,
       reviews: productData.reviews,
-      stock: productData.availability,
+      stock: productData.stock,
       lastUpdated: serverTimestamp(),
       lastSyncedAt: serverTimestamp()
     };
