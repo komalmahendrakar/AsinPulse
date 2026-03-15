@@ -39,10 +39,12 @@ export async function syncAsin(asin: string, userId: string) {
       rating: productData.rating,
       reviews: productData.reviews,
       availability_raw: productData.stock,
-      // Map availability status to numeric stock for internal tracking if needed
+      // Store numeric stock for internal tracking/charts
       stock: productData.stock.toLowerCase().includes('in stock') ? 99 : 0,
       lastUpdated: serverTimestamp()
     });
+
+    console.log("Firestore updated");
 
     return { success: true };
   } catch (error: any) {

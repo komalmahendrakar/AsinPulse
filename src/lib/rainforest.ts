@@ -23,6 +23,8 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     return null;
   }
 
+  console.log("Rainforest API called");
+
   try {
     const params = new URLSearchParams({
       api_key: apiKey,
