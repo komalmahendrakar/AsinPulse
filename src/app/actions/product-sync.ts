@@ -6,37 +6,47 @@
 
 import { db } from '@/lib/firebase';
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
-import { fetchRainforestData } from '@/lib/amazon';
+import { fetchAmazonProduct } from '@/lib/rainforest';
 
-export interface ProductData {
+export interface ProductSyncResult {
   asin: string;
   title: string;
   price: number;
   rating: number;
   reviews: number;
   stock: number;
-  lastUpdated: any;
+  stockRaw: string;
 }
 
 /**
  * Synchronizes live Amazon data for a single ASIN and updates relevant documents.
  */
-export async function syncProductData(asin: string, userId?: string): Promise<ProductData | null> {
+export async function syncProductData(asin: string, userId?: string): Promise<ProductSyncResult | null> {
   try {
-    const data = await fetchRainforestData(asin);
+    const product = await fetchAmazonProduct(asin);
     
-    const productData: ProductData = {
+    if (!product) {
+      return null;
+    }
+
+    // Map raw availability to a numeric stock value for legacy support
+    const stockValue = product.stockRaw.toLowerCase().includes('in stock') ? 99 : 0;
+
+    const syncResult: ProductSyncResult = {
       asin,
-      title: data.title,
-      price: data.price,
-      rating: data.rating,
-      reviews: data.reviews,
-      stock: data.stock,
-      lastUpdated: serverTimestamp(),
+      title: product.title,
+      price: product.price,
+      rating: product.rating,
+      reviews: product.reviews,
+      stock: stockValue,
+      stockRaw: product.stockRaw,
     };
 
     // 1. Update Global Product Cache
-    await setDoc(doc(db, "products", asin), productData, { merge: true });
+    await setDoc(doc(db, "products", asin), {
+      ...syncResult,
+      lastUpdated: serverTimestamp()
+    }, { merge: true });
 
     // 2. Update the specific Monitored ASIN document for the user
     if (userId) {
@@ -46,11 +56,12 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
       
       const updatePromises = querySnapshot.docs.map(docSnap => 
         updateDoc(doc(db, "asins", docSnap.id), {
-          product_name: data.title,
-          price: data.price,
-          rating: data.rating,
-          reviews: data.reviews,
-          stock: data.stock,
+          product_name: product.title,
+          price: product.price,
+          rating: product.rating,
+          reviews: product.reviews,
+          stock: stockValue,
+          availability_raw: product.stockRaw,
           lastUpdated: serverTimestamp()
         })
       );
@@ -58,7 +69,7 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
       await Promise.all(updatePromises);
     }
 
-    return productData;
+    return syncResult;
   } catch (error) {
     console.error(`Failed to sync ASIN ${asin}:`, error);
     throw error;

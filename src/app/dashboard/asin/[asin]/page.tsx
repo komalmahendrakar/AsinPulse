@@ -1,8 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
-import { collection, query, where, orderBy, limit, doc } from "firebase/firestore";
+import { useUser, useFirestore, useCollection } from "@/firebase";
+import { collection, query, where, orderBy, limit } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -188,7 +188,7 @@ export default function AsinDetailsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
         {[
           { label: "Price", value: monitoredAsin?.price ? `$${monitoredAsin.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
-          { label: "Stock", value: monitoredAsin?.stock !== undefined ? monitoredAsin.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
+          { label: "Stock", value: monitoredAsin?.availability_raw || (monitoredAsin?.stock !== undefined ? (monitoredAsin.stock > 0 ? "In Stock" : "Out of Stock") : "N/A"), icon: <Box className="h-5 w-5 text-accent" /> },
           { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
           { label: "Reviews", value: monitoredAsin?.reviews !== undefined ? monitoredAsin.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
