@@ -83,7 +83,7 @@ export default function AsinDetailsPage() {
       time: d.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || "",
       fullDate: d.timestamp?.toDate().toLocaleDateString() || "",
       price: d.price,
-      stock: d.stock,
+      stock: typeof d.stock === 'number' ? d.stock : (d.stock === 'In Stock' ? 99 : 0),
       rating: d.rating,
       reviews: d.reviews || 0
     }));
@@ -110,7 +110,6 @@ export default function AsinDetailsPage() {
           description: `Refreshed Amazon data for ${asin}.`,
         });
       } else {
-        // Surface the specific error message from the API or action
         throw new Error(result.error);
       }
     } catch (error: any) {
@@ -169,8 +168,8 @@ export default function AsinDetailsPage() {
               )}
             </div>
             <p className="text-muted-foreground mt-1 flex items-center gap-2 max-w-xl truncate">
-              {monitoredAsin?.product_name ? (
-                <span className="font-medium text-foreground/80">{monitoredAsin.product_name}</span>
+              {monitoredAsin?.title || monitoredAsin?.product_name ? (
+                <span className="font-medium text-foreground/80">{monitoredAsin?.title || monitoredAsin?.product_name}</span>
               ) : (
                 <span className="italic">Fetch Amazon data to see title</span>
               )}
@@ -195,7 +194,7 @@ export default function AsinDetailsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
         {[
           { label: "Price", value: monitoredAsin?.price ? `$${monitoredAsin.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
-          { label: "Stock", value: monitoredAsin?.availability_raw || (monitoredAsin?.stock !== undefined ? (monitoredAsin.stock > 0 ? "In Stock" : "Out of Stock") : "N/A"), icon: <Box className="h-5 w-5 text-accent" /> },
+          { label: "Stock", value: monitoredAsin?.stock || "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
           { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
           { label: "Reviews", value: monitoredAsin?.reviews !== undefined ? monitoredAsin.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },

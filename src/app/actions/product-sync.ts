@@ -14,8 +14,7 @@ export interface ProductSyncResult {
   price: number;
   rating: number;
   reviews: number;
-  stock: number;
-  stockRaw: string;
+  stock: string;
 }
 
 /**
@@ -29,23 +28,20 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
       return null;
     }
 
-    // Map raw availability to a numeric stock value for legacy support
-    const stockValue = product.stockRaw.toLowerCase().includes('in stock') ? 99 : 0;
-
     const syncResult: ProductSyncResult = {
       asin,
       title: product.title,
       price: product.price,
       rating: product.rating,
       reviews: product.reviews,
-      stock: stockValue,
-      stockRaw: product.stockRaw,
+      stock: product.stock,
     };
 
     // 1. Update Global Product Cache
     await setDoc(doc(db, "products", asin), {
       ...syncResult,
-      lastUpdated: serverTimestamp()
+      lastUpdated: serverTimestamp(),
+      lastSyncedAt: serverTimestamp()
     }, { merge: true });
 
     // 2. Update the specific Monitored ASIN document for the user
@@ -56,13 +52,15 @@ export async function syncProductData(asin: string, userId?: string): Promise<Pr
       
       const updatePromises = querySnapshot.docs.map(docSnap => 
         updateDoc(doc(db, "asins", docSnap.id), {
+          title: product.title,
           product_name: product.title,
           price: product.price,
           rating: product.rating,
           reviews: product.reviews,
-          stock: stockValue,
-          availability_raw: product.stockRaw,
-          lastUpdated: serverTimestamp()
+          stock: product.stock,
+          availability_raw: product.stock,
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
         })
       );
       

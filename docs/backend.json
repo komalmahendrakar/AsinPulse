@@ -25,13 +25,15 @@
         "asin_id": { "type": "string" },
         "user_id": { "type": "string" },
         "asin_code": { "type": "string" },
+        "title": { "type": "string" },
         "product_name": { "type": "string" },
         "price": { "type": "number" },
         "rating": { "type": "number" },
         "reviews": { "type": "number" },
-        "stock": { "type": "number" },
+        "stock": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "lastSyncedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["user_id", "asin_code"]
     },
@@ -45,8 +47,9 @@
         "price": { "type": "number" },
         "rating": { "type": "number" },
         "reviews": { "type": "number" },
-        "stock": { "type": "number" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
+        "stock": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "lastSyncedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["asin", "title"]
     },
@@ -59,7 +62,7 @@
         "asin_code": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
         "price": { "type": "number" },
-        "stock": { "type": "number" },
+        "stock": { "type": "any" },
         "buybox_owner": { "type": "string" },
         "delivery_days": { "type": "number" },
         "rating": { "type": "number" },

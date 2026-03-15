@@ -24,24 +24,23 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     throw new Error("Rainforest API key is missing. Please check your .env configuration.");
   }
 
-  console.log("Calling Rainforest API for ASIN (Validation/Sync):", asin);
+  // Mandatory parameter: type=product
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    type: 'product',
+    amazon_domain: 'amazon.com',
+    asin: asin
+  });
+
+  const url = `https://api.rainforestapi.com/request?${params.toString()}`;
+  console.log("Calling Rainforest API for ASIN:", asin);
 
   try {
-    const params = new URLSearchParams({
-      api_key: apiKey,
-      type: 'product',
-      amazon_domain: 'amazon.com',
-      asin: asin
-    });
-
-    const url = `https://api.rainforestapi.com/request?${params.toString()}`;
-    console.log("Rainforest request started");
-
     const response = await fetch(url, { next: { revalidate: 0 } });
     const data = await response.json();
 
-    // Log the actual response for debugging
-    console.log("Rainforest response received");
+    // Mandatory Logging: Log the entire API response in the server console
+    console.log("Rainforest response:", JSON.stringify(data, null, 2));
 
     // Handle Rainforest API-level errors
     if (data.request_info && data.request_info.success === false) {
@@ -49,18 +48,18 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
       throw new Error(data.request_info.message || "Rainforest API request failed.");
     }
 
+    // Mapping logic as requested
     if (!data.product) {
-      console.error("Product data missing in Rainforest response for ASIN:", asin);
-      // Return null so the caller can handle "Not Found" gracefully
-      return null;
+      console.error("Amazon product not found for this ASIN:", asin);
+      throw new Error("Amazon product not found for this ASIN");
     }
 
     const product = data.product;
     
-    // Normalize and return data
+    // Exact mappings requested
     return {
       title: product.title || "Unknown Product",
-      price: product.buybox_winner?.price?.value || product.price?.value || 0,
+      price: product.buybox_price?.value || product.buybox_winner?.price?.value || 0,
       rating: product.rating || 0,
       reviews: product.ratings_total || 0,
       stock: product.availability?.raw || "Unknown"
