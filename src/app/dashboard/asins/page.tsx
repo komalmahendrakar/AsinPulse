@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
-import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc, getDocs, limit, startAfter } from "firebase/firestore";
+import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Loader2, RefreshCw, Zap, ShieldAlert, Activity } from "lucide-react";
+import { Plus, Loader2, RefreshCw, Zap, Package } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { executeSecureSyncBatch } from "@/app/actions/sync-asins";
+import { fetchAmazonProduct } from "@/lib/rainforest";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 100,
@@ -65,7 +65,6 @@ export default function AsinsPage() {
     let totalProcessed = 0;
 
     try {
-      // Processing in secure batches via Server Actions
       for (let i = 0; i < asins.length; i += BATCH_SIZE) {
         const batch = asins.slice(i, i + BATCH_SIZE);
         const results = await executeSecureSyncBatch(user.uid, user.email, batch);
@@ -99,29 +98,79 @@ export default function AsinsPage() {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
     if (currentCount + asinList.length > currentLimit) {
-      toast({ variant: "destructive", title: "Limit Exceeded", description: "ASIN limit reached for your subscription plan." });
+      toast({ 
+        variant: "destructive", 
+        title: "Limit Exceeded", 
+        description: "ASIN limit reached for your subscription plan." 
+      });
       return;
     }
 
     setIsAdding(true);
+    let successCount = 0;
+    let failCount = 0;
+
     try {
-      const promises = asinList.map(async (code) => {
+      for (const code of asinList) {
         const cleanCode = code.trim().toUpperCase();
-        if (!cleanCode) return;
-        return addDoc(collection(firestore, "asins"), {
-          user_id: user.uid,
-          asin_code: cleanCode,
-          product_name: `Catalog Item ${cleanCode}`, 
-          created_at: serverTimestamp(),
-          status: "Monitoring"
+        if (!cleanCode) continue;
+
+        // 1. Validate ASIN with Rainforest API
+        try {
+          const product = await fetchAmazonProduct(cleanCode);
+          
+          if (!product) {
+            toast({
+              variant: "destructive",
+              title: "Validation Failed",
+              description: `ASIN ${cleanCode}: Invalid ASIN or product not found on Amazon.`,
+            });
+            failCount++;
+            continue;
+          }
+
+          // 2. Add to Firestore with real data
+          await addDoc(collection(firestore, "asins"), {
+            user_id: user.uid,
+            asin_code: cleanCode,
+            product_name: product.title,
+            price: product.price,
+            rating: product.rating,
+            reviews: product.reviews,
+            stock: product.stock.toLowerCase().includes('in stock') ? 99 : 0,
+            availability_raw: product.stock,
+            created_at: serverTimestamp(),
+            lastUpdated: serverTimestamp(),
+            status: "Monitoring"
+          });
+          
+          successCount++;
+        } catch (err: any) {
+          console.error(`Validation error for ${cleanCode}:`, err.message);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: `Failed to validate ASIN ${cleanCode}.`,
+          });
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast({ 
+          title: "Enrollment Successful", 
+          description: `Successfully enrolled ${successCount} ASIN(s) into monitoring.` 
         });
-      });
-      await Promise.all(promises);
-      toast({ title: "Success", description: `Enrolled ${asinList.length} ASIN(s) into monitoring job.` });
+      }
+      
       setSingleAsin("");
       setBulkAsins("");
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: "Enrollment failed." });
+      toast({ 
+        variant: "destructive", 
+        title: "System Error", 
+        description: "Enrollment pipeline failed." 
+      });
     } finally {
       setIsAdding(false);
     }
@@ -162,6 +211,7 @@ export default function AsinsPage() {
               <CardTitle className="text-lg font-headline flex items-center gap-2">
                 <Plus className="h-4 w-4 text-accent" /> Add ASIN
               </CardTitle>
+              <CardDescription className="text-xs">ASINs are validated via Amazon before entry.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form onSubmit={(e) => { e.preventDefault(); handleAddAsins([singleAsin]); }} className="flex gap-2">
@@ -171,15 +221,24 @@ export default function AsinsPage() {
                   onChange={(e) => setSingleAsin(e.target.value)}
                   disabled={isAdding}
                 />
-                <Button type="submit" disabled={isAdding || !singleAsin}>Add</Button>
+                <Button type="submit" disabled={isAdding || !singleAsin}>
+                  {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                </Button>
               </form>
               <Textarea 
-                placeholder="Bulk ASINs..." 
+                placeholder="Bulk ASINs (newline separated)..." 
                 value={bulkAsins}
                 onChange={(e) => setBulkAsins(e.target.value)}
                 className="bg-background/50 h-24"
+                disabled={isAdding}
               />
-              <Button onClick={() => handleAddAsins(bulkAsins.split(/[\n,]+/).filter(a => a.trim()))} className="w-full" variant="outline" disabled={isAdding || !bulkAsins}>
+              <Button 
+                onClick={() => handleAddAsins(bulkAsins.split(/[\n,]+/).filter(a => a.trim()))} 
+                className="w-full" 
+                variant="outline" 
+                disabled={isAdding || !bulkAsins}
+              >
+                {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Bulk Enroll
               </Button>
             </CardContent>
@@ -230,10 +289,20 @@ export default function AsinsPage() {
                 <TableBody>
                   {loading ? (
                     <TableRow><TableCell colSpan={3} className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-accent" /></TableCell></TableRow>
+                  ) : filteredAsins?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">
+                        No ASINs found in your catalog.
+                      </TableCell>
+                    </TableRow>
                   ) : filteredAsins?.map((item) => (
-                    <TableRow key={item.id} className="cursor-pointer hover:bg-accent/5" onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}>
+                    <TableRow 
+                      key={item.id} 
+                      className="cursor-pointer hover:bg-accent/5" 
+                      onClick={() => window.location.href = `/dashboard/asin/${item.asin_code}`}
+                    >
                       <TableCell className="font-mono text-xs font-bold text-accent">{item.asin_code}</TableCell>
-                      <TableCell className="font-medium">{item.product_name}</TableCell>
+                      <TableCell className="font-medium max-w-[300px] truncate">{item.product_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="bg-green-500/5 text-green-500 border-green-500/20">
                           <RefreshCw className="h-3 w-3 mr-1.5 animate-spin duration-[3000ms]" /> Monitoring

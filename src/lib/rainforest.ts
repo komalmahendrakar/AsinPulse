@@ -24,7 +24,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     throw new Error("Rainforest API key is missing. Please check your .env configuration.");
   }
 
-  console.log("Calling Rainforest API for ASIN:", asin);
+  console.log("Calling Rainforest API for ASIN (Validation/Sync):", asin);
 
   try {
     const params = new URLSearchParams({
@@ -41,23 +41,23 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     const data = await response.json();
 
     // Log the actual response for debugging
-    console.log("Rainforest response:", data);
+    console.log("Rainforest response received");
 
     // Handle Rainforest API-level errors
     if (data.request_info && data.request_info.success === false) {
-      console.error("Rainforest API error:", data);
+      console.error("Rainforest API error:", data.request_info.message);
       throw new Error(data.request_info.message || "Rainforest API request failed.");
     }
 
     if (!data.product) {
-      console.error("Product data missing in Rainforest response");
-      throw new Error("Amazon product not found for this ASIN.");
+      console.error("Product data missing in Rainforest response for ASIN:", asin);
+      // Return null so the caller can handle "Not Found" gracefully
+      return null;
     }
 
     const product = data.product;
     
-    // Normalize and return data as requested:
-    // Extract: title, price (buybox), rating, ratings_total (reviews), and availability raw (stock)
+    // Normalize and return data
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_winner?.price?.value || product.price?.value || 0,
