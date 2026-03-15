@@ -56,7 +56,8 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
 
     const product = data.product;
     
-    // Normalize and return data
+    // Normalize and return data as requested:
+    // Extract: title, price (buybox), rating, ratings_total (reviews), and availability raw (stock)
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_winner?.price?.value || product.price?.value || 0,
