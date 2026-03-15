@@ -24,23 +24,17 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     throw new Error("Rainforest API key is missing. Please check your .env configuration.");
   }
 
-  // Mandatory parameter: type=product
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    type: 'product',
-    amazon_domain: 'amazon.com',
-    asin: asin
-  });
-
-  const url = `https://api.rainforestapi.com/request?${params.toString()}`;
+  // Correct request format using type=product instead of engine=amazon_product
+  const url = `https://api.rainforestapi.com/request?api_key=${apiKey}&type=product&amazon_domain=amazon.com&asin=${asin}`;
+  
   console.log("Calling Rainforest API for ASIN:", asin);
 
   try {
     const response = await fetch(url, { next: { revalidate: 0 } });
     const data = await response.json();
 
-    // Mandatory Logging: Log the entire API response in the server console
-    console.log("Rainforest response:", JSON.stringify(data, null, 2));
+    // Debugging: Log the entire API response in the server console
+    console.log("Rainforest response:", data);
 
     // Handle Rainforest API-level errors
     if (data.request_info && data.request_info.success === false) {
@@ -48,15 +42,15 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
       throw new Error(data.request_info.message || "Rainforest API request failed.");
     }
 
-    // Mapping logic as requested
+    // Check if product data exists
     if (!data.product) {
       console.error("Amazon product not found for this ASIN:", asin);
-      throw new Error("Amazon product not found for this ASIN");
+      throw new Error("Amazon product not found for this ASIN.");
     }
 
     const product = data.product;
     
-    // Exact mappings requested
+    // Mapping logic as requested
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_price?.value || product.buybox_winner?.price?.value || 0,

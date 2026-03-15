@@ -33,17 +33,18 @@ export async function syncAsin(asin: string, userId: string) {
     const docRef = doc(db, "asins", docId);
 
     // Fields to store: price, rating, reviews, stock, title, lastSyncedAt
-    await updateDoc(docRef, {
+    const updateData = {
       title: productData.title,
-      product_name: productData.title, // Keep for backward compatibility with UI
+      product_name: productData.title,
       price: productData.price,
       rating: productData.rating,
       reviews: productData.reviews,
       stock: productData.stock,
-      availability_raw: productData.stock,
       lastUpdated: serverTimestamp(),
       lastSyncedAt: serverTimestamp()
-    });
+    };
+
+    await updateDoc(docRef, updateData);
 
     console.log("Firestore updated successfully for ASIN:", asin);
 
