@@ -14,7 +14,7 @@ export interface RainforestProductResponse {
 }
 
 /**
- * Fetches product data from Rainforest API.
+ * Fetches product data from Rainforest API using the amazon_product engine.
  * Uses fallback values if the API fails or is unconfigured.
  */
 export async function fetchRainforestData(asin: string): Promise<RainforestProductResponse> {
@@ -50,6 +50,7 @@ export async function fetchRainforestData(asin: string): Promise<RainforestProdu
 
     const product = data.product;
     
+    // Extract fields as requested: title, price, rating, reviews, availability (stock)
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_winner?.price?.value || product.price?.value || 0,
