@@ -100,6 +100,7 @@ export default function AsinDetailsPage() {
 
   const handleSyncNow = async () => {
     if (!user?.uid) return;
+    console.log("Sync Now button clicked for ASIN:", asin);
     setSyncing(true);
     try {
       const result = await syncAsin(asin, user.uid);
@@ -112,6 +113,7 @@ export default function AsinDetailsPage() {
         throw new Error(result.error);
       }
     } catch (error: any) {
+      console.error("Sync button handler error:", error);
       toast({
         variant: "destructive",
         title: "Sync Failed",

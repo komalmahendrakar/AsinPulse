@@ -23,7 +23,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     return null;
   }
 
-  console.log("Rainforest API called");
+  console.log("Rainforest API called for ASIN:", asin);
 
   try {
     const params = new URLSearchParams({
@@ -36,6 +36,9 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     const url = `https://api.rainforestapi.com/request?${params.toString()}`;
     const response = await fetch(url, { next: { revalidate: 0 } });
     const data = await response.json();
+
+    // Log the response structure for debugging
+    console.log("Rainforest API response received:", JSON.stringify(data).substring(0, 500) + "...");
 
     if (!data.product) {
       console.error(`Rainforest API: No product data found for ASIN ${asin}`, data.request_info);

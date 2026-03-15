@@ -12,12 +12,14 @@ import { fetchAmazonProduct } from '@/lib/rainforest';
  * Syncs a single ASIN for a user by fetching data from Rainforest API and updating Firestore.
  */
 export async function syncAsin(asin: string, userId: string) {
+  console.log("syncAsin action running for ASIN:", asin, "User:", userId);
+  
   try {
     // 1. Fetch data from Rainforest
     const productData = await fetchAmazonProduct(asin);
     
     if (!productData) {
-      throw new Error("Could not retrieve data from Amazon.");
+      throw new Error("Could not retrieve data from Amazon via Rainforest API.");
     }
 
     // 2. Find the user's monitored ASIN document
@@ -44,7 +46,7 @@ export async function syncAsin(asin: string, userId: string) {
       lastUpdated: serverTimestamp()
     });
 
-    console.log("Firestore updated");
+    console.log("Firestore updated successfully for ASIN:", asin);
 
     return { success: true };
   } catch (error: any) {
