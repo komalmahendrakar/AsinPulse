@@ -18,7 +18,7 @@ export async function syncAsin(asin: string, userId: string) {
     const productData = await fetchAmazonProduct(asin);
     
     if (!productData) {
-      throw new Error("Amazon product data is unavailable.");
+      throw new Error("Amazon product not found for this ASIN.");
     }
 
     const asinsRef = collection(db, "asins");
@@ -39,7 +39,7 @@ export async function syncAsin(asin: string, userId: string) {
       price: productData.price,
       rating: productData.rating,
       reviews: productData.reviews,
-      stock: productData.stock,
+      stock: productData.availability,
       lastUpdated: serverTimestamp(),
       lastSyncedAt: serverTimestamp()
     };

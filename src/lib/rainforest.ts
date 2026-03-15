@@ -9,7 +9,7 @@ export interface AmazonProduct {
   price: number;
   rating: number;
   reviews: number;
-  stock: string;
+  availability: string;
 }
 
 /**
@@ -24,7 +24,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     throw new Error("Rainforest API key is missing. Please check your .env configuration.");
   }
 
-  // Correct request format using type=product instead of engine=amazon_product
+  // Exact request format as requested
   const url = `https://api.rainforestapi.com/request?api_key=${apiKey}&type=product&amazon_domain=amazon.com&asin=${asin}`;
   
   console.log("Calling Rainforest API for ASIN:", asin);
@@ -33,8 +33,8 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     const response = await fetch(url, { next: { revalidate: 0 } });
     const data = await response.json();
 
-    // Debugging: Log the entire API response in the server console
-    console.log("Rainforest response:", data);
+    // Debugging: Log the entire API response in the server console as requested
+    console.log("Rainforest validation response:", JSON.stringify(data, null, 2));
 
     // Handle Rainforest API-level errors
     if (data.request_info && data.request_info.success === false) {
@@ -42,7 +42,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
       throw new Error(data.request_info.message || "Rainforest API request failed.");
     }
 
-    // Check if product data exists
+    // Exact validation check as requested
     if (!data.product) {
       console.error("Amazon product not found for this ASIN:", asin);
       throw new Error("Amazon product not found for this ASIN.");
@@ -50,13 +50,13 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
 
     const product = data.product;
     
-    // Mapping logic as requested
+    // Returning metadata using correct mappings
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_price?.value || product.buybox_winner?.price?.value || 0,
       rating: product.rating || 0,
       reviews: product.ratings_total || 0,
-      stock: product.availability?.raw || "Unknown"
+      availability: product.availability?.raw || "Unknown"
     };
   } catch (error: any) {
     console.error(`Exception in fetchAmazonProduct for ASIN ${asin}:`, error.message);

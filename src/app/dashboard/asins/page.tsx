@@ -123,7 +123,7 @@ export default function AsinsPage() {
             toast({
               variant: "destructive",
               title: "Validation Failed",
-              description: `ASIN ${cleanCode}: Invalid ASIN or product not found on Amazon.`,
+              description: `ASIN ${cleanCode}: Amazon product not found for this ASIN.`,
             });
             failCount++;
             continue;
@@ -137,8 +137,8 @@ export default function AsinsPage() {
             price: product.price,
             rating: product.rating,
             reviews: product.reviews,
-            stock: product.stock.toLowerCase().includes('in stock') ? 99 : 0,
-            availability_raw: product.stock,
+            stock: product.availability.toLowerCase().includes('in stock') ? 99 : 0,
+            availability_raw: product.availability,
             created_at: serverTimestamp(),
             lastUpdated: serverTimestamp(),
             status: "Monitoring"
@@ -150,7 +150,7 @@ export default function AsinsPage() {
           toast({
             variant: "destructive",
             title: "Error",
-            description: `Failed to validate ASIN ${cleanCode}.`,
+            description: `Failed to validate ASIN ${cleanCode}: ${err.message}`,
           });
           failCount++;
         }
