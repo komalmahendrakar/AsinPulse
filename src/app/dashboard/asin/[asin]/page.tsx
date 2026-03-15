@@ -13,7 +13,7 @@ import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
-import { syncProductData } from "@/app/actions/product-sync";
+import { syncAsin } from "@/app/actions/syncAsin";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AsinDetailsPage() {
@@ -102,11 +102,15 @@ export default function AsinDetailsPage() {
     if (!user?.uid) return;
     setSyncing(true);
     try {
-      await syncProductData(asin, user.uid);
-      toast({
-        title: "Sync Successful",
-        description: `Refreshed Amazon data for ${asin}.`,
-      });
+      const result = await syncAsin(asin, user.uid);
+      if (result.success) {
+        toast({
+          title: "Sync Successful",
+          description: `Refreshed Amazon data for ${asin}.`,
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",

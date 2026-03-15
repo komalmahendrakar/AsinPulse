@@ -9,7 +9,7 @@ export interface AmazonProduct {
   price: number;
   rating: number;
   reviews: number;
-  stockRaw: string;
+  stock: string;
 }
 
 /**
@@ -32,7 +32,7 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
     });
 
     const url = `https://api.rainforestapi.com/request?${params.toString()}`;
-    const response = await fetch(url, { next: { revalidate: 3600 } });
+    const response = await fetch(url, { next: { revalidate: 0 } });
     const data = await response.json();
 
     if (!data.product) {
@@ -42,12 +42,13 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
 
     const product = data.product;
     
+    // Normalize data as requested
     return {
       title: product.title || "Unknown Product",
       price: product.buybox_winner?.price?.value || product.price?.value || 0,
       rating: product.rating || 0,
       reviews: product.ratings_total || 0,
-      stockRaw: product.availability?.raw || "Unknown"
+      stock: product.availability?.raw || "Unknown"
     };
   } catch (error) {
     console.error(`Error in fetchAmazonProduct for ASIN ${asin}:`, error);
