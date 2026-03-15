@@ -4,7 +4,7 @@
  * @fileOverview Server Action for synchronizing product data and updating Firestore.
  */
 
-import { db } from '@/lib/firebase';
+import { db } from '@/firebase/config';
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { fetchAmazonProduct } from '@/lib/rainforest';
 

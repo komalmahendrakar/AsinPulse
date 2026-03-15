@@ -4,7 +4,7 @@
  * @fileOverview Server Action for executing the ASIN monitoring sync securely.
  */
 
-import { db } from '@/lib/firebase';
+import { db } from '@/firebase/config';
 import { collection, addDoc, doc, setDoc, increment } from 'firebase/firestore';
 import { syncProductData } from './product-sync';
 
