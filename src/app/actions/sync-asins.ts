@@ -3,11 +3,11 @@
 
 /**
  * @fileOverview Server Action for executing the ASIN monitoring sync securely.
- * Updated to use Rainforest API logic for real data fetching.
+ * Updated to use Rainforest API logic for real data fetching and snapshotting.
  */
 
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc, increment } from 'firebase/firestore';
 import { syncProductData } from './product-sync';
 
 /**
@@ -26,7 +26,7 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
 
   for (const asin of asinBatch) {
     try {
-      // Fetch real data from Rainforest
+      // Fetch real data from Rainforest and update product cache
       const productData = await syncProductData(asin.asin_code);
       
       if (!productData) {
@@ -42,10 +42,11 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
         stock: productData.stock,
         buybox_owner: "Rainforest API Sync",
         delivery_days: 0,
-        rating: productData.rating
+        rating: productData.rating,
+        reviews: productData.reviews
       };
 
-      // Create snapshot record
+      // Create snapshot record for history graphs
       await addDoc(collection(db, "monitoring_data"), monitoringData);
 
       // Detection logic for Out of Stock

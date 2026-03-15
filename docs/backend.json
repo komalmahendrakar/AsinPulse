@@ -40,6 +40,7 @@
         "title": { "type": "string" },
         "price": { "type": "number" },
         "rating": { "type": "number" },
+        "reviews": { "type": "number" },
         "stock": { "type": "number" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
@@ -57,7 +58,8 @@
         "stock": { "type": "number" },
         "buybox_owner": { "type": "string" },
         "delivery_days": { "type": "number" },
-        "rating": { "type": "number" }
+        "rating": { "type": "number" },
+        "reviews": { "type": "number" }
       },
       "required": ["user_id", "asin_code", "timestamp"]
     },

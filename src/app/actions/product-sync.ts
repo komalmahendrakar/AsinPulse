@@ -15,6 +15,7 @@ export interface ProductData {
   title: string;
   price: number;
   rating: number;
+  reviews: number;
   stock: number;
   lastUpdated: any;
 }
@@ -40,7 +41,8 @@ export async function syncProductData(asin: string): Promise<ProductData | null>
     const product = data.product;
     const price = product.buybox_winner?.price?.value || product.price?.value || 0;
     const rating = product.rating || 0;
-    const stock = product.inventory?.value || 0;
+    const reviews = product.ratings_total || product.reviews_count || 0;
+    const stock = product.inventory?.value || (product.availability?.raw === 'In Stock' ? 99 : 0);
     const title = product.title || "Unknown Product";
 
     const productData: ProductData = {
@@ -48,6 +50,7 @@ export async function syncProductData(asin: string): Promise<ProductData | null>
       title,
       price,
       rating,
+      reviews,
       stock,
       lastUpdated: serverTimestamp(),
     };

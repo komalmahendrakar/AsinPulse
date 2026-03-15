@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingDown, ChevronLeft, ArrowUpRight, AlertTriangle, Sparkles, History, ShoppingCart, Box, Star, DollarSign, Loader2, RefreshCw } from "lucide-react";
+import { TrendingDown, ChevronLeft, ArrowUpRight, AlertTriangle, Sparkles, History, ShoppingCart, Box, Star, DollarSign, Loader2, RefreshCw, MessageSquare } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart as ReBarChart, Bar } from "recharts";
 import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
@@ -79,7 +79,8 @@ export default function AsinDetailsPage() {
       fullDate: d.timestamp?.toDate().toLocaleDateString() || "",
       price: d.price,
       stock: d.stock,
-      rating: d.rating
+      rating: d.rating,
+      reviews: d.reviews || 0
     }));
   }, [monitoringData]);
 
@@ -123,7 +124,7 @@ export default function AsinDetailsPage() {
       const result = await aiSalesDropRootCauseAnalysis({
         asin: asin,
         salesDropDetails: `Last recorded sales units: ${salesHistory?.[salesHistory.length - 1]?.units_sold || 0}. Analysis triggered due to critical performance drop.`,
-        historicalPerformance: `Current Price: $${latestStats?.price || 'N/A'}. Stock Level: ${latestStats?.stock || 0}. Category Rating: ${latestStats?.rating || 'N/A'}.`,
+        historicalPerformance: `Current Price: $${latestStats?.price || 'N/A'}. Stock Level: ${latestStats?.stock || 0}. Category Rating: ${latestStats?.rating || 'N/A'}. Reviews: ${latestStats?.reviews || 0}.`,
         marketContext: "Automated analysis based on cross-correlated monitoring snapshots and sales velocity."
       });
       setAnalysisResult(result);
@@ -184,11 +185,12 @@ export default function AsinDetailsPage() {
       </div>
 
       {/* KPI Highlight Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
         {[
           { label: "Price", value: latestStats?.price ? `$${latestStats.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
           { label: "Stock", value: latestStats?.stock !== undefined ? latestStats.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
           { label: "Rating", value: latestStats?.rating ? `${latestStats.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
+          { label: "Reviews", value: latestStats?.reviews !== undefined ? latestStats.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
         ].map((stat, i) => (
           <Card key={i} className="bg-card/50 backdrop-blur-sm shadow-sm border-border/50 hover:border-accent/30 transition-all">
