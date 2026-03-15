@@ -34,7 +34,7 @@ export default function AsinDetailsPage() {
     return query(
       collection(firestore, "asins"),
       where("user_id", "==", user.uid),
-      where("asin_code", "==", asin),
+      where("asin_code", "==", asin.toUpperCase()),
       limit(1)
     );
   }, [firestore, user?.uid, asin]);
@@ -46,7 +46,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin) return null;
     return query(
       collection(firestore, "monitoring_data"),
-      where("asin_code", "==", asin),
+      where("asin_code", "==", asin.toUpperCase()),
       orderBy("timestamp", "asc")
     );
   }, [firestore, asin]);
@@ -57,7 +57,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin || !user?.uid) return null;
     return query(
       collection(firestore, "alerts"),
-      where("asin_code", "==", asin),
+      where("asin_code", "==", asin.toUpperCase()),
       where("user_id", "==", user.uid),
       orderBy("timestamp", "desc"),
       limit(10)
@@ -70,7 +70,7 @@ export default function AsinDetailsPage() {
     if (!firestore || !asin) return null;
     return query(
       collection(firestore, "sales_data"),
-      where("asin_code", "==", asin),
+      where("asin_code", "==", asin.toUpperCase()),
       orderBy("date", "asc")
     );
   }, [firestore, asin]);
@@ -83,7 +83,7 @@ export default function AsinDetailsPage() {
       time: d.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || "",
       fullDate: d.timestamp?.toDate().toLocaleDateString() || "",
       price: d.price,
-      stock: typeof d.stock === 'number' ? d.stock : (d.stock === 'In Stock' ? 99 : 0),
+      stock: typeof d.stock === 'number' ? d.stock : (d.stock?.toLowerCase().includes('in stock') ? 99 : 0),
       rating: d.rating,
       reviews: d.reviews || 0
     }));
@@ -99,10 +99,11 @@ export default function AsinDetailsPage() {
   }, [salesHistory]);
 
   const handleSyncNow = async () => {
-    if (!user?.uid) return;
-    console.log("Sync Now button clicked for ASIN:", asin);
+    if (!user?.uid || !asin) return;
+    console.log("Sync Now triggered for ASIN:", asin, "User:", user.uid);
     setSyncing(true);
     try {
+      // Pass both the ASIN from URL and the current User UID
       const result = await syncAsin(asin, user.uid);
       if (result.success) {
         toast({
@@ -160,7 +161,7 @@ export default function AsinDetailsPage() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-4xl font-bold font-headline tracking-tight">{asin}</h1>
+              <h1 className="text-4xl font-bold font-headline tracking-tight uppercase">{asin}</h1>
               {asinAlerts && asinAlerts.length > 0 && asinAlerts[0].status !== 'resolved' && (
                 <Badge variant="destructive" className="bg-destructive/10 text-destructive border-destructive/20 font-bold px-4 py-1">
                   CRITICAL: {asinAlerts[0].alert_type.replace(/_/g, ' ')}
