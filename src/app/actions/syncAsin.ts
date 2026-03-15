@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * @fileOverview Server Action for executing the ASIN synchronization.
+ * @fileOverview Server Action for executing the ASIN synchronization with logging.
  */
 
 import { db } from '@/lib/firebase';
@@ -12,14 +12,14 @@ import { fetchAmazonProduct } from '@/lib/rainforest';
  * Syncs a single ASIN for a user by fetching data from Rainforest API and updating Firestore.
  */
 export async function syncAsin(asin: string, userId: string) {
-  console.log("syncAsin action running for ASIN:", asin, "User:", userId);
+  console.log("syncAsin action started for ASIN:", asin, "User:", userId);
   
   try {
     // 1. Fetch data from Rainforest
     const productData = await fetchAmazonProduct(asin);
     
     if (!productData) {
-      throw new Error("Could not retrieve data from Amazon via Rainforest API.");
+      throw new Error("Amazon product data is unavailable.");
     }
 
     // 2. Find the user's monitored ASIN document
@@ -50,7 +50,7 @@ export async function syncAsin(asin: string, userId: string) {
 
     return { success: true };
   } catch (error: any) {
-    console.error(`Sync Action Error for ${asin}:`, error);
+    console.error(`syncAsin Pipeline Failure for ${asin}:`, error.message);
     return { success: false, error: error.message || "Failed to sync product data." };
   }
 }

@@ -110,10 +110,11 @@ export default function AsinDetailsPage() {
           description: `Refreshed Amazon data for ${asin}.`,
         });
       } else {
+        // Surface the specific error message from the API or action
         throw new Error(result.error);
       }
     } catch (error: any) {
-      console.error("Sync button handler error:", error);
+      console.error("Dashboard Sync Error:", error.message);
       toast({
         variant: "destructive",
         title: "Sync Failed",
