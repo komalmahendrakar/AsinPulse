@@ -2,28 +2,39 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useUser, useFirestore, useCollection } from "@/firebase";
-import { collection, query, where, orderBy, limit } from "firebase/firestore";
+import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
+import { collection, query, where, orderBy, limit, doc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingDown, ChevronLeft, ArrowUpRight, AlertTriangle, Sparkles, History, ShoppingCart, Box, Star, DollarSign, Loader2 } from "lucide-react";
+import { TrendingDown, ChevronLeft, ArrowUpRight, AlertTriangle, Sparkles, History, ShoppingCart, Box, Star, DollarSign, Loader2, RefreshCw } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart as ReBarChart, Bar } from "recharts";
 import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
+import { syncProductData } from "@/app/actions/product-sync";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AsinDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useUser();
   const firestore = useFirestore();
+  const { toast } = useToast();
   const asin = params.asin as string;
   
   const [analyzing, setAnalyzing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AiSalesDropRootCauseAnalysisOutput | null>(null);
+
+  // Fetch cached product details
+  const productRef = useMemoFirebase(() => {
+    if (!firestore || !asin) return null;
+    return doc(firestore, "products", asin);
+  }, [firestore, asin]);
+  const { data: productInfo, loading: productLoading } = useDoc(productRef);
 
   // Fetch monitoring data for snapshots
   const monitoringQuery = useMemoFirebase(() => {
@@ -82,9 +93,29 @@ export default function AsinDetailsPage() {
   }, [salesHistory]);
 
   const latestStats = useMemo(() => {
+    if (productInfo) return productInfo;
     if (!monitoringData || monitoringData.length === 0) return null;
     return monitoringData[monitoringData.length - 1];
-  }, [monitoringData]);
+  }, [monitoringData, productInfo]);
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      await syncProductData(asin);
+      toast({
+        title: "Sync Successful",
+        description: `Refreshed Amazon data for ${asin}.`,
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Sync Failed",
+        description: error.message || "Could not retrieve Amazon data.",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleRunAnalysis = async () => {
     setAnalyzing(true);
@@ -103,7 +134,7 @@ export default function AsinDetailsPage() {
     }
   };
 
-  if (monitoringLoading) {
+  if (monitoringLoading || productLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-accent" />
@@ -129,13 +160,25 @@ export default function AsinDetailsPage() {
                 </Badge>
               )}
             </div>
-            <p className="text-muted-foreground mt-1 flex items-center gap-2">
-              <History className="h-4 w-4" /> Last updated: {latestStats?.timestamp?.toDate().toLocaleString() || "Syncing..."}
+            <p className="text-muted-foreground mt-1 flex items-center gap-2 max-w-xl truncate">
+              {productInfo?.title ? (
+                <span className="font-medium text-foreground/80">{productInfo.title}</span>
+              ) : (
+                <span className="italic">Fetch Amazon data to see title</span>
+              )}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="h-11 rounded-xl px-6 border-accent/20 text-accent font-semibold hover:bg-accent/5">Sync Now</Button>
+          <Button 
+            variant="outline" 
+            className="h-11 rounded-xl px-6 border-accent/20 text-accent font-semibold hover:bg-accent/5"
+            onClick={handleSyncNow}
+            disabled={syncing}
+          >
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            {syncing ? "Syncing..." : "Sync Now"}
+          </Button>
           <Button className="h-11 rounded-xl px-6 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">Manage Alerts</Button>
         </div>
       </div>
@@ -143,9 +186,9 @@ export default function AsinDetailsPage() {
       {/* KPI Highlight Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {[
-          { label: "Price", value: latestStats ? `$${latestStats.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
-          { label: "Stock", value: latestStats ? latestStats.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
-          { label: "Rating", value: latestStats ? `${latestStats.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
+          { label: "Price", value: latestStats?.price ? `$${latestStats.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
+          { label: "Stock", value: latestStats?.stock !== undefined ? latestStats.stock : "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
+          { label: "Rating", value: latestStats?.rating ? `${latestStats.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
         ].map((stat, i) => (
           <Card key={i} className="bg-card/50 backdrop-blur-sm shadow-sm border-border/50 hover:border-accent/30 transition-all">
@@ -318,4 +361,3 @@ export default function AsinDetailsPage() {
     </div>
   );
 }
-

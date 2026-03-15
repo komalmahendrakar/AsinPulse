@@ -31,6 +31,20 @@
       },
       "required": ["user_id", "asin_code"]
     },
+    "Product": {
+      "title": "Product",
+      "description": "Live Amazon product details and performance cache.",
+      "type": "object",
+      "properties": {
+        "asin": { "type": "string" },
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "rating": { "type": "number" },
+        "stock": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["asin", "title"]
+    },
     "MonitoringData": {
       "title": "MonitoringData",
       "description": "Historical snapshots of product signals.",
@@ -131,6 +145,10 @@
     "/asins/{asinId}": {
       "schema": "ASIN",
       "description": "Monitored ASINs"
+    },
+    "/products/{asin}": {
+      "schema": "Product",
+      "description": "Amazon product details"
     },
     "/monitoring_data/{dataId}": {
       "schema": "MonitoringData",

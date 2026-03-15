@@ -40,6 +40,13 @@ service cloud.firestore {
       allow update, delete: if belongsToUser() || isAdmin();
     }
 
+    // Product cache: Accessible to all authenticated users for reading
+    match /products/{asin} {
+      allow read: if isAuthenticated();
+      // Writing is handled by server actions, but we'll allow admin or system-like operations if needed
+      allow write: if isAdmin();
+    }
+
     // Monitoring Data
     match /monitoring_data/{dataId} {
       allow read: if belongsToUser() || isAdmin();

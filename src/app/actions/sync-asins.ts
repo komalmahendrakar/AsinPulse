@@ -3,24 +3,18 @@
 
 /**
  * @fileOverview Server Action for executing the ASIN monitoring sync securely.
- * This ensures that monitoring API keys and alert configurations remain on the server.
- * Tracks platform usage metrics daily.
+ * Updated to use Rainforest API logic for real data fetching.
  */
 
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, setDoc, increment } from 'firebase/firestore';
-
-const MONITORING_API_KEY = process.env.MONITORING_API_KEY;
+import { syncProductData } from './product-sync';
 
 /**
  * Executes a secure sync batch for a set of ASINs.
  * Updates daily usage metrics upon completion.
  */
 export async function executeSecureSyncBatch(userId: string, userEmail: string, asinBatch: any[]) {
-  if (!MONITORING_API_KEY) {
-    throw new Error("Configuration Error: Monitoring API Key is missing.");
-  }
-
   const results = {
     processed: 0,
     alerts: 0,
@@ -32,26 +26,30 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
 
   for (const asin of asinBatch) {
     try {
-      // Simulate secure monitoring logic
-      const isOutOfStock = Math.random() > 0.9;
-      const basePrice = 124.99;
+      // Fetch real data from Rainforest
+      const productData = await syncProductData(asin.asin_code);
       
+      if (!productData) {
+        results.errors++;
+        continue;
+      }
+
       const monitoringData = {
         user_id: userId,
         asin_code: asin.asin_code,
         timestamp: new Date(),
-        price: basePrice,
-        stock: isOutOfStock ? 0 : 50,
-        buybox_owner: "Your Store",
-        delivery_days: 2,
-        rating: 4.8
+        price: productData.price,
+        stock: productData.stock,
+        buybox_owner: "Rainforest API Sync",
+        delivery_days: 0,
+        rating: productData.rating
       };
 
       // Create snapshot record
       await addDoc(collection(db, "monitoring_data"), monitoringData);
 
-      // Detection logic
-      if (isOutOfStock) {
+      // Detection logic for Out of Stock
+      if (productData.stock === 0) {
         const alertData = {
           user_id: userId,
           asin_code: asin.asin_code,
@@ -67,8 +65,8 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
         await addDoc(collection(db, "mail"), {
           to: userEmail,
           message: {
-            subject: "Amazon Alert – ASIN Issue Detected",
-            text: `ASIN: ${asin.asin_code}\nIssue: OUT_OF_STOCK\nSeverity: High`
+            subject: "Amazon Alert – ASIN Out of Stock",
+            text: `ASIN: ${asin.asin_code}\nTitle: ${productData.title}\nIssue: OUT_OF_STOCK\nSeverity: High`
           }
         });
         results.alerts++;
