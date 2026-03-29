@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useUser, useFirestore, useCollection, useDoc } from "@/firebase";
 import { collection, addDoc, query, where, orderBy, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,11 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Loader2, RefreshCw, Zap, Package } from "lucide-react";
+import { Plus, Loader2, RefreshCw, Zap, Package, FileUp, CheckCircle2, AlertCircle } from "lucide-react";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { executeSecureSyncBatch } from "@/app/actions/sync-asins";
-// ✅ ADD THIS
 import { syncAsin, validateAsin } from '@/app/actions/syncAsin';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import * as XLSX from 'xlsx';
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 100,
@@ -24,10 +33,17 @@ const PLAN_LIMITS: Record<string, number> = {
 
 const BATCH_SIZE = 50;
 
+interface UploadedAsin {
+  code: string;
+  row: number;
+  isValid: boolean;
+}
+
 export default function AsinsPage() {
   const { user } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [singleAsin, setSingleAsin] = useState("");
   const [bulkAsins, setBulkAsins] = useState("");
@@ -35,6 +51,10 @@ export default function AsinsPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
+
+  // Upload States
+  const [previewAsins, setPreviewAsins] = useState<UploadedAsin[]>([]);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
 
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
@@ -95,6 +115,52 @@ export default function AsinsPage() {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const bstr = e.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+      const asinRegex = /^[A-Z0-9]{10}$/i;
+      const parsedAsins: UploadedAsin[] = data
+        .map((row, index) => {
+          const code = String(row[0] || "").trim();
+          if (!code) return null;
+          return {
+            code,
+            row: index + 1,
+            isValid: asinRegex.test(code)
+          };
+        })
+        .filter((item): item is UploadedAsin => item !== null);
+
+      setPreviewAsins(parsedAsins);
+      setIsUploadDialogOpen(true);
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmFileUpload = () => {
+    const validAsins = previewAsins.filter(a => a.isValid);
+    
+    // MOCK SUCCESS LOGIC
+    toast({
+      title: "File Uploaded (Simulated)",
+      description: `Found ${validAsins.length} valid ASINs out of ${previewAsins.length} total rows. In a production environment, these would now be validated and added.`,
+    });
+
+    setIsUploadDialogOpen(false);
+    setPreviewAsins([]);
+  };
+
   const handleAddAsins = async (asinList: string[]) => {
     if (!firestore || !user?.uid || asinList.length === 0) return;
     
@@ -117,7 +183,6 @@ export default function AsinsPage() {
         if (!cleanCode) continue;
 
         try {
-          // ✅ Call server action instead of fetchAmazonProduct directly
           const result = await validateAsin(cleanCode, user.uid);
 
           if (!result.success || !result.product) {
@@ -132,7 +197,6 @@ export default function AsinsPage() {
 
           const product = result.product;
 
-          // ✅ Add to Firestore with real validated data
           await addDoc(collection(firestore, "asins"), {
             user_id: user.uid,
             asin_code: cleanCode,
@@ -227,22 +291,44 @@ export default function AsinsPage() {
                   {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
                 </Button>
               </form>
-              <Textarea 
-                placeholder="Bulk ASINs (newline separated)..." 
-                value={bulkAsins}
-                onChange={(e) => setBulkAsins(e.target.value)}
-                className="bg-background/50 h-24"
-                disabled={isAdding}
-              />
-              <Button 
-                onClick={() => handleAddAsins(bulkAsins.split(/[\n,]+/).filter(a => a.trim()))} 
-                className="w-full" 
-                variant="outline" 
-                disabled={isAdding || !bulkAsins}
-              >
-                {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Bulk Enroll
-              </Button>
+              
+              <div className="pt-2">
+                <Textarea 
+                  placeholder="Bulk ASINs (newline separated)..." 
+                  value={bulkAsins}
+                  onChange={(e) => setBulkAsins(e.target.value)}
+                  className="bg-background/50 h-24 mb-3"
+                  disabled={isAdding}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Button 
+                    onClick={() => handleAddAsins(bulkAsins.split(/[\n,]+/).filter(a => a.trim()))} 
+                    className="w-full" 
+                    variant="outline" 
+                    disabled={isAdding || !bulkAsins}
+                  >
+                    {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Bulk Enroll
+                  </Button>
+                  
+                  <div className="relative">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      className="hidden" 
+                      accept=".csv, .xlsx, .xls"
+                      onChange={handleFileUpload}
+                    />
+                    <Button 
+                      variant="secondary" 
+                      className="w-full gap-2"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <FileUp className="h-4 w-4" /> Upload File
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -318,6 +404,58 @@ export default function AsinsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Upload Preview Dialog */}
+      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>File Upload Preview</DialogTitle>
+            <DialogDescription>
+              We found {previewAsins.length} ASINs in your file. Please verify the codes below.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto border rounded-lg my-4">
+            <Table>
+              <TableHeader className="bg-muted/50 sticky top-0">
+                <TableRow>
+                  <TableHead className="w-20">Row</TableHead>
+                  <TableHead>ASIN Code</TableHead>
+                  <TableHead className="text-right">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {previewAsins.map((item) => (
+                  <TableRow key={item.row}>
+                    <TableCell className="text-muted-foreground">{item.row}</TableCell>
+                    <TableCell className="font-mono font-bold uppercase">{item.code}</TableCell>
+                    <TableCell className="text-right">
+                      {item.isValid ? (
+                        <Badge variant="outline" className="text-green-500 border-green-500/30 bg-green-500/5 gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Valid
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="gap-1">
+                          <AlertCircle className="h-3 w-3" /> Invalid
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter className="gap-3">
+            <Button variant="outline" onClick={() => { setIsUploadDialogOpen(false); setPreviewAsins([]); }}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmFileUpload} className="gap-2">
+              Confirm & Add All Valid ASINs ({previewAsins.filter(a => a.isValid).length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
