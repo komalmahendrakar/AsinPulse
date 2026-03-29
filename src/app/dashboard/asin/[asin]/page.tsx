@@ -209,7 +209,7 @@ export default function AsinDetailsPage() {
           { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
           { label: "Reviews", value: monitoredAsin?.reviews !== undefined ? monitoredAsin.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
           { label: "Sold By", value: monitoredAsin?.sold_by || "Amazon.com", icon: <Store className="h-5 w-5 text-orange-500" /> },
-          { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
+          { label: "Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
         ].map((stat, i) => (
           <Card key={i} className="bg-card/50 backdrop-blur-sm shadow-sm border-border/50 hover:border-accent/30 transition-all">
             <CardContent className="pt-6">
@@ -217,7 +217,7 @@ export default function AsinDetailsPage() {
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{stat.label}</span>
                 <div className="p-2 rounded-xl bg-muted/50">{stat.icon}</div>
               </div>
-              <div className="text-2xl font-bold font-headline truncate" title={String(stat.value)}>{stat.value}</div>
+              <div className="text-lg font-bold font-headline truncate" title={String(stat.value)}>{stat.value}</div>
             </CardContent>
           </Card>
         ))}
