@@ -1,9 +1,5 @@
 'use server';
 
-/**
- * @fileOverview Rainforest API utility for fetching Amazon product data with detailed debugging logs.
- */
-
 export interface AmazonProduct {
   title: string;
   price: number;
@@ -12,49 +8,75 @@ export interface AmazonProduct {
   stock: string;
 }
 
-/**
- * Fetches real Amazon product data using the Rainforest API.
- * Includes detailed logging for debugging API integration.
- */
 export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | null> {
-  const apiKey = process.env.RAINFOREST_API_KEY;
+  const apiKey = process.env.SCRAPER_API_KEY;
   
   if (!apiKey) {
-    console.error("RAINFOREST_API_KEY is not configured in environment variables.");
-    throw new Error("Rainforest API key is missing. Please check your .env configuration.");
+    throw new Error("SCRAPER_API_KEY is not configured.");
   }
 
-  // Exact request format as requested: type=product and amazon_domain=amazon.com
-  const url = `https://api.rainforestapi.com/request?api_key=${apiKey}&type=product&amazon_domain=amazon.com&asin=${asin}`;
+  const amazonUrl = `https://www.amazon.com/dp/${asin}`;
+  const scraperUrl = `http://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(amazonUrl)}&country_code=us&render=false`;
   
-  console.log("Calling Rainforest API for ASIN:", asin);
+  console.log("Fetching Amazon page for ASIN:", asin);
 
-  try {
-    const response = await fetch(url, { next: { revalidate: 0 } });
-    const data = await response.json();
-
-    // Log full API response for debugging as requested
-    console.log("Rainforest API response:", JSON.stringify(data, null, 2));
-
-    // Validation: Check both product and product_results
-    const product = data.product || data.product_results;
-
-    if (!product) {
-      console.error("Amazon product not found for this ASIN:", asin);
-      throw new Error("Amazon product not found for this ASIN.");
-    }
-
-    // Extract fields safely as requested
-    // Mapping: price -> buybox_price.value, reviews -> ratings_total, stock -> availability.raw
-    return {
-      title: product.title || "Unknown Product",
-      price: product.buybox_price?.value || product.buybox_winner?.price?.value || 0,
-      rating: product.rating || 0,
-      reviews: product.ratings_total || 0,
-      stock: product.availability?.raw || "Unknown"
-    };
-  } catch (error: any) {
-    console.error(`Exception in fetchAmazonProduct for ASIN ${asin}:`, error.message);
-    throw error;
+  const response = await fetch(scraperUrl, { next: { revalidate: 0 } });
+  
+  if (!response.ok) {
+    throw new Error(`ScraperAPI request failed: ${response.status}`);
   }
+
+  const html = await response.text();
+  console.log("HTML length:", html.length);
+
+  // Check if page loaded correctly
+  if (html.length < 1000) {
+    throw new Error("Amazon product not found for this ASIN.");
+  }
+
+  // Title - multiple patterns
+  const titleMatch = 
+    html.match(/id="productTitle"[^>]*>\s*([\s\S]+?)\s*<\/span>/) ||
+    html.match(/"title":"([^"]+)"/) ||
+    html.match(/<title>([^|<]+)/);
+  
+  // Price - multiple patterns  
+  const priceMatch =
+    html.match(/class="a-price-whole">([0-9,]+)</) ||
+    html.match(/\$([0-9]+\.[0-9]{2})/) ||
+    html.match(/"price":"?\$?([0-9.]+)"?/);
+
+  // Rating
+  const ratingMatch = 
+    html.match(/([0-9.]+) out of 5 stars/) ||
+    html.match(/"ratingScore":"([0-9.]+)"/);
+
+  // Reviews
+  const reviewsMatch = 
+    html.match(/([0-9,]+) global ratings/) ||
+    html.match(/([0-9,]+) ratings/) ||
+    html.match(/"totalReviewCount":([0-9]+)/);
+
+  // Stock
+  const stockMatch =
+    html.match(/id="availability"[\s\S]{0,200}<span[^>]*>\s*([^<]+)\s*</) ||
+    html.match(/In Stock/) ;
+
+  const title = titleMatch ? titleMatch[1].trim().substring(0, 200) : '';
+  
+  if (!title) {
+    console.error("Could not parse title from HTML");
+    throw new Error("Amazon product not found for this ASIN.");
+  }
+
+  const priceStr = priceMatch ? priceMatch[1].replace(/,/g, '') : '0';
+  const price = parseFloat(priceStr) || 0;
+  const rating = ratingMatch ? parseFloat(ratingMatch[1]) : 0;
+  const reviewsStr = reviewsMatch ? reviewsMatch[1].replace(/,/g, '') : '0';
+  const reviews = parseInt(reviewsStr) || 0;
+  const stock = stockMatch ? (typeof stockMatch === 'string' ? 'In Stock' : stockMatch[1]?.trim() || 'In Stock') : 'Unknown';
+
+  console.log("Parsed:", { title: title.substring(0,50), price, rating, reviews, stock });
+
+  return { title, price, rating, reviews, stock };
 }

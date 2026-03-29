@@ -1,86 +1,8 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper to check if the user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Helper to check if the user has admin role
-    function isAdmin() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
-    // Helper to check if the user owns the document (by ID)
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Helper to check if the user owns the data being written (by user_id field)
-    function isDataOwner() {
-      return isAuthenticated() && request.auth.uid == request.resource.data.user_id;
-    }
-
-    // Helper to check if the existing data belongs to the user
-    function belongsToUser() {
-      return isAuthenticated() && resource.data.user_id == request.auth.uid;
-    }
-
-    // User profiles: Users can manage their own, Admins can manage all
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    // ASINs: Users manage their own, Admins view all
-    match /asins/{asinId} {
-      allow read: if belongsToUser() || isAdmin();
-      allow create: if isDataOwner();
-      allow update, delete: if belongsToUser() || isAdmin();
-    }
-
-    // Product cache: Accessible to all authenticated users for reading
-    match /products/{asin} {
-      allow read: if isAuthenticated();
-      // Writing is handled by server actions, but we'll allow admin or system-like operations if needed
-      allow write: if isAdmin();
-    }
-
-    // Monitoring Data
-    match /monitoring_data/{dataId} {
-      allow read: if belongsToUser() || isAdmin();
-      allow create: if isDataOwner();
-    }
-
-    // Sales Data
-    match /sales_data/{dataId} {
-      allow read: if belongsToUser() || isAdmin();
-      allow create: if isDataOwner();
-    }
-
-    // Alerts
-    match /alerts/{alertId} {
-      allow read, update, delete: if belongsToUser() || isAdmin();
-      allow create: if isDataOwner();
-    }
-
-    // System Logs
-    match /system_logs/{logId} {
-      allow read: if belongsToUser() || isAdmin();
-      allow create: if isDataOwner();
-    }
-
-    // Mail queue
-    match /mail/{mailId} {
-      allow create: if isAuthenticated();
-      allow read: if isAdmin();
-    }
-
-    // Usage Metrics
-    match /usage_metrics/{metricId} {
-      allow read: if belongsToUser() || isAdmin();
-      allow write: if isDataOwner() || isAdmin();
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }

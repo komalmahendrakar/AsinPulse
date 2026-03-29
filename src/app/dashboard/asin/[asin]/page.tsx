@@ -2,12 +2,12 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useUser, useFirestore, useCollection } from "@/firebase";
-import { collection, query, where, orderBy, limit } from "firebase/firestore";
+import { orderBy, limit } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingDown, ChevronLeft, AlertTriangle, Sparkles, Box, Star, DollarSign, Loader2, RefreshCw, MessageSquare, ShoppingCart } from "lucide-react";
+import { TrendingDown, ChevronLeft, AlertTriangle, Sparkles, Box, Star, DollarSign, Loader2, RefreshCw, MessageSquare, ShoppingCart, Store } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart as ReBarChart, Bar } from "recharts";
 import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMemoFirebase } from "@/firebase/use-memo-firebase";
 import { syncAsin } from "@/app/actions/syncAsin";
 import { useToast } from "@/hooks/use-toast";
+import { collection, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function AsinDetailsPage() {
   const params = useParams();
@@ -101,31 +102,34 @@ export default function AsinDetailsPage() {
   }, [salesHistory]);
 
   const handleSyncNow = async () => {
-    if (!user?.uid || !asin) {
-      console.warn("handleSyncNow blocked: Missing UserID or ASIN", { userId: user?.uid, asin });
-      return;
-    }
-    
-    console.log("Sync Now UI Button Clicked", { asin, userId: user.uid });
+    if (!user?.uid || !asin || !firestore) return;
+    console.log("Sync Now triggered for ASIN:", asin);
     setSyncing(true);
-    
     try {
       const result = await syncAsin(asin, user.uid);
-      if (result.success) {
-        toast({
-          title: "Sync Successful",
-          description: `Updated Amazon intelligence for ${asin}.`,
-        });
+      
+      if (result.success && result.data) {
+        // Update Firestore from client side (has auth)
+        const asinsRef = collection(firestore, "asins");
+        const q = query(asinsRef, 
+          where("user_id", "==", user.uid), 
+          where("asin_code", "==", asin)
+        );
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          await updateDoc(snapshot.docs[0].ref, {
+            ...result.data,
+            lastUpdated: serverTimestamp()
+          });
+        }
+        
+        toast({ title: "Sync Successful", description: `Updated data for ${asin}` });
       } else {
         throw new Error(result.error);
       }
     } catch (error: any) {
-      console.error("Dashboard Sync Logic Error:", error.message);
-      toast({
-        variant: "destructive",
-        title: "Sync Failed",
-        description: error.message || "The synchronization pipeline failed.",
-      });
+      toast({ variant: "destructive", title: "Sync Failed", description: error.message });
     } finally {
       setSyncing(false);
     }
@@ -198,12 +202,13 @@ export default function AsinDetailsPage() {
       </div>
 
       {/* KPI Highlight Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
         {[
           { label: "Price", value: monitoredAsin?.price ? `$${monitoredAsin.price}` : "N/A", icon: <DollarSign className="h-5 w-5 text-green-500" /> },
           { label: "Stock", value: monitoredAsin?.stock || "N/A", icon: <Box className="h-5 w-5 text-accent" /> },
           { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : "N/A", icon: <Star className="h-5 w-5 text-yellow-500" /> },
           { label: "Reviews", value: monitoredAsin?.reviews !== undefined ? monitoredAsin.reviews.toLocaleString() : "N/A", icon: <MessageSquare className="h-5 w-5 text-blue-500" /> },
+          { label: "Sold By", value: monitoredAsin?.sold_by || "Amazon.com", icon: <Store className="h-5 w-5 text-orange-500" /> },
           { label: "Daily Sales", value: salesHistory && salesHistory.length > 0 ? salesHistory[salesHistory.length - 1].units_sold : "0", icon: <ShoppingCart className="h-5 w-5 text-purple-500" /> },
         ].map((stat, i) => (
           <Card key={i} className="bg-card/50 backdrop-blur-sm shadow-sm border-border/50 hover:border-accent/30 transition-all">
@@ -212,7 +217,7 @@ export default function AsinDetailsPage() {
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{stat.label}</span>
                 <div className="p-2 rounded-xl bg-muted/50">{stat.icon}</div>
               </div>
-              <div className="text-3xl font-bold font-headline">{stat.value}</div>
+              <div className="text-2xl font-bold font-headline truncate" title={String(stat.value)}>{stat.value}</div>
             </CardContent>
           </Card>
         ))}

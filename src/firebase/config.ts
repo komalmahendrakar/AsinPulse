@@ -11,8 +11,6 @@ export const firebaseConfig = {
   appId: "1:41404589473:web:7008a66e8a1ce4b74097e0"
 };
 
-// Initialize Firebase only if it hasn't been initialized already
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-
 export const auth = getAuth(app);
 export const db = getFirestore(app);
