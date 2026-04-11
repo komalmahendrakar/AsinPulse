@@ -159,12 +159,27 @@ export default function AsinDetailsPage() {
     );
   }
 
+  // UI rendering logic for Rating to distinguish between 0 reviews and unsynced data
+  const renderRatingValue = () => {
+    if (monitoredAsin?.reviews === 0) return "No ratings yet";
+    if (monitoredAsin?.rating !== undefined && monitoredAsin?.rating !== null) {
+      return `${monitoredAsin.rating}★`;
+    }
+    return null;
+  };
+
+  const isRatingSyncRequired = () => {
+    if (monitoredAsin?.reviews === 0) return false;
+    if (monitoredAsin?.rating !== undefined && monitoredAsin?.rating !== null) return false;
+    return true;
+  };
+
   const kpis = [
     { label: "Price", value: formatPrice(monitoredAsin?.price), icon: <span className="text-lg font-bold text-green-500">₹</span>, syncRequired: !monitoredAsin?.price },
     { label: "Stock", value: monitoredAsin?.stock, icon: <Box className="h-5 w-5 text-accent" />, syncRequired: !monitoredAsin?.stock },
-    { label: "Rating", value: monitoredAsin?.rating ? `${monitoredAsin.rating}★` : null, icon: <Star className="h-5 w-5 text-yellow-500" />, syncRequired: !monitoredAsin?.rating },
-    { label: "Reviews", value: monitoredAsin?.reviews?.toLocaleString(), icon: <MessageSquare className="h-5 w-5 text-blue-500" />, syncRequired: monitoredAsin?.reviews === undefined },
-    { label: "Sold By", value: monitoredAsin?.sold_by || (monitoredAsin?.price ? "Amazon.in" : null), icon: <Store className="h-5 w-5 text-orange-500" />, syncRequired: !monitoredAsin?.price },
+    { label: "Rating", value: renderRatingValue(), icon: <Star className="h-5 w-5 text-yellow-500" />, syncRequired: isRatingSyncRequired() },
+    { label: "Reviews", value: monitoredAsin?.reviews !== undefined && monitoredAsin?.reviews !== null ? monitoredAsin.reviews.toLocaleString() : (monitoredAsin?.reviews === 0 ? "0" : null), icon: <MessageSquare className="h-5 w-5 text-blue-500" />, syncRequired: monitoredAsin?.reviews === undefined || monitoredAsin?.reviews === null },
+    { label: "Sold By", value: monitoredAsin?.sold_by || (monitoredAsin?.price ? "Amazon.in" : null), icon: <Store className="h-5 w-5 text-orange-500" />, syncRequired: !monitoredAsin?.price && !monitoredAsin?.sold_by },
     { label: "Daily Sales", value: salesHistory?.length ? salesHistory[salesHistory.length - 1].units_sold : null, icon: <ShoppingCart className="h-5 w-5 text-purple-500" />, syncRequired: !salesHistory?.length },
   ];
 

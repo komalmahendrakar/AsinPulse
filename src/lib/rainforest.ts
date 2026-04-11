@@ -7,8 +7,8 @@
 export interface AmazonProduct {
   title: string;
   price: number;
-  rating: number;
-  reviews: number;
+  rating: number | null;
+  reviews: number | null;
   stock: string;
   sold_by: string;
   currency: string;
@@ -64,11 +64,15 @@ export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | 
       cleanedSoldBy = cleanedSoldBy.replace("Visit the ", "");
     }
 
+    // Careful parsing of rating and reviews to distinguish null from 0
+    const rawRating = data.product_star_rating;
+    const rawReviews = data.product_num_ratings;
+
     return {
       title: data.product_title || "Unknown Product",
       price: numericPrice,
-      rating: parseFloat(data.product_star_rating) || 0,
-      reviews: parseInt(data.product_num_ratings) || 0,
+      rating: (rawRating !== null && rawRating !== undefined) ? parseFloat(rawRating) : null,
+      reviews: (rawReviews !== null && rawReviews !== undefined) ? parseInt(rawReviews) : null,
       stock: data.product_availability || "In Stock",
       sold_by: cleanedSoldBy,
       currency: "INR"
