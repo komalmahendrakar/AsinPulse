@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * @fileOverview Utility for fetching Amazon product data using the HasData API.
+ * @fileOverview RapidAPI Real-Time Amazon Data utility for fetching Indian product data.
  */
 
 export interface AmazonProduct {
@@ -10,61 +10,71 @@ export interface AmazonProduct {
   rating: number;
   reviews: number;
   stock: string;
+  sold_by: string;
+  currency: string;
 }
 
 /**
- * Fetches structured product data from HasData API.
- * Validates existence and maps specific Amazon performance metrics.
+ * Fetches product data from RapidAPI (real-time-amazon-data).
+ * Optimized for Amazon India.
  */
 export async function fetchAmazonProduct(asin: string): Promise<AmazonProduct | null> {
-  const apiKey = process.env.HASDATA_API_KEY;
+  const apiKey = process.env.RAPIDAPI_KEY;
   
   if (!apiKey) {
-    throw new Error("HASDATA_API_KEY is not configured in environment variables.");
+    throw new Error("RAPIDAPI_KEY is not configured in environment variables.");
   }
 
-  // HasData Scraper API endpoint for Amazon products
-  const url = `https://api.hasdata.com/scraper/amazon/product?asin=${asin}&domain=amazon.com`;
+  const url = `https://real-time-amazon-data.p.rapidapi.com/product-details?asin=${asin}&country=IN`;
   
-  console.log("Calling HasData API for ASIN:", asin);
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json'
-      },
-      next: { revalidate: 0 }
-    });
+    console.log(`[RapidAPI] Fetching ASIN: ${asin} for India market...`);
     
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': 'real-time-amazon-data.p.rapidapi.com',
+        'x-rapidapi-key': apiKey
+      },
+      next: { revalidate: 0 } // Ensure live data
+    });
+
     if (!response.ok) {
-      console.error(`HasData API request failed with status: ${response.status}`);
-      throw new Error(`HasData API request failed: ${response.status}`);
+      throw new Error(`RapidAPI responded with status: ${response.status}`);
     }
 
-    const data = await response.json();
+    const json = await response.json();
     
-    // Log full response for debugging
-    console.log("HasData API response:", JSON.stringify(data, null, 2));
+    // Debug log the full response as requested
+    console.log("RapidAPI response:", JSON.stringify(json, null, 2));
 
-    // HasData structure: data.data typically contains the product details
-    const product = data.data || data;
-
-    if (!product || (!product.title && !product.name)) {
-      console.error("Product data missing in HasData response");
+    if (json.status !== 'OK' || !json.data || Object.keys(json.data).length === 0) {
       throw new Error("Amazon product not found for this ASIN.");
     }
 
-    // Map fields safely to the application's internal AmazonProduct interface
+    const data = json.data;
+
+    // Price parsing: Remove commas and non-numeric chars for the number field
+    const rawPrice = data.product_price ? String(data.product_price).replace(/[^0-9.]/g, '') : "0";
+    const numericPrice = parseFloat(rawPrice) || 0;
+
+    // Sold By cleaning logic: "Visit the Apple Store" -> "Apple Store"
+    let cleanedSoldBy = data.product_byline || "Amazon.in";
+    if (cleanedSoldBy.startsWith("Visit the ")) {
+      cleanedSoldBy = cleanedSoldBy.replace("Visit the ", "");
+    }
+
     return {
-      title: product.title || product.name || "Unknown Product",
-      price: product.price?.value || (typeof product.price === 'number' ? product.price : 0),
-      rating: product.rating || 0,
-      reviews: product.reviews_count || product.ratings_total || product.reviewsCount || 0,
-      stock: product.availability || product.availabilityStatus || "Unknown",
+      title: data.product_title || "Unknown Product",
+      price: numericPrice,
+      rating: parseFloat(data.product_star_rating) || 0,
+      reviews: parseInt(data.product_num_ratings) || 0,
+      stock: data.product_availability || "In Stock",
+      sold_by: cleanedSoldBy,
+      currency: "INR"
     };
   } catch (error: any) {
-    console.error("HasData API integration error:", error.message);
+    console.error(`[RapidAPI Error] ASIN ${asin}:`, error.message);
     throw error;
   }
 }
