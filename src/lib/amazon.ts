@@ -1,72 +1,67 @@
 'use server';
 
 /**
- * @fileOverview Rainforest API utility for fetching Amazon product data.
+ * @fileOverview HasData API utility for fetching Amazon product data.
+ * Updated to keep consistent with the primary HasData integration.
  */
 
-export interface RainforestProductResponse {
+export interface HasDataProductResponse {
   title: string;
   price: number;
   rating: number;
   reviews: number;
-  stock: number;
+  stock: string;
   success: boolean;
 }
 
 /**
- * Fetches product data from Rainforest API using the amazon_product engine.
- * Uses fallback values if the API fails or is unconfigured.
+ * Fetches product data from HasData API.
  */
-export async function fetchRainforestData(asin: string): Promise<RainforestProductResponse> {
-  const apiKey = process.env.RAINFOREST_API_KEY;
+export async function fetchRainforestData(asin: string): Promise<HasDataProductResponse> {
+  const apiKey = process.env.HASDATA_API_KEY;
   
   if (!apiKey) {
-    console.warn("RAINFOREST_API_KEY is not configured. Returning fallback data.");
+    console.warn("HASDATA_API_KEY is not configured. Returning fallback data.");
     return {
       title: `Product ${asin} (No API Key)`,
       price: 0,
       rating: 0,
       reviews: 0,
-      stock: 0,
+      stock: "Unknown",
       success: false
     };
   }
 
   try {
-    const params = new URLSearchParams({
-      api_key: apiKey,
-      type: 'product',
-      amazon_domain: 'amazon.com',
-      asin: asin
+    const url = `https://api.hasdata.com/scraper/amazon/product?asin=${asin}&domain=amazon.com`;
+    const response = await fetch(url, { 
+      headers: { 'x-api-key': apiKey },
+      next: { revalidate: 3600 } 
     });
-
-    const url = `https://api.rainforestapi.com/request?${params.toString()}`;
-    const response = await fetch(url, { next: { revalidate: 3600 } }); // Cache for 1 hour
-    const data = await response.json();
-
-    if (!data.product) {
-      throw new Error(data.request_info?.message || "Product data missing in response.");
-    }
-
-    const product = data.product;
     
-    // Extract fields as requested: title, price, rating, reviews, availability (stock)
+    const data = await response.json();
+    const product = data.data || data;
+
+    if (!product) {
+      throw new Error("Product data missing in response.");
+    }
+    
     return {
-      title: product.title || "Unknown Product",
-      price: product.buybox_winner?.price?.value || product.price?.value || 0,
+      title: product.title || product.name || "Unknown Product",
+      price: product.price?.value || (typeof product.price === 'number' ? product.price : 0),
       rating: product.rating || 0,
-      reviews: product.ratings_total || product.reviews_count || 0,
-      stock: product.inventory?.value || (product.availability?.raw === 'In Stock' ? 99 : 0),
+      reviews: product.reviews_count || product.ratings_total || 0,
+      stock: product.availability || "Unknown",
       success: true
     };
   } catch (error) {
-    console.error(`Rainforest API error for ASIN ${asin}:`, error);
+    console.error(`HasData API error for ASIN ${asin}:`, error);
     return {
       title: `Product ${asin} (Sync Error)`,
       price: 0,
       rating: 0,
       reviews: 0,
-      stock: 0,
+      stock: "Error",
       success: false
     };
   }

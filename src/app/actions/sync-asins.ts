@@ -38,7 +38,7 @@ export async function executeSecureSyncBatch(userId: string, userEmail: string, 
         timestamp: new Date(),
         price: productData.price,
         stock: productData.stock,
-        buybox_owner: "Rainforest API Sync",
+        buybox_owner: "HasData API Sync",
         delivery_days: 0,
         rating: productData.rating,
         reviews: productData.reviews
