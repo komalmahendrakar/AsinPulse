@@ -148,10 +148,14 @@ export default function AsinDetailsPage() {
       toast({ title: "Analysis Complete", description: "AI has identified the operational root cause." });
     } catch (error: any) {
       console.error("Analysis failed", error);
+      const isServiceBusy = error.message?.toLowerCase().includes('unavailable') || error.message?.includes('503');
+      
       toast({
         variant: "destructive",
-        title: "Analysis Failed",
-        description: error.message || "The AI analysis encountered an error. Please check your API configuration."
+        title: isServiceBusy ? "AI Service Busy" : "Analysis Failed",
+        description: isServiceBusy 
+          ? "The AI model is currently under high demand. Please try again in a few moments." 
+          : (error.message || "The AI analysis encountered an error. Please check your API configuration.")
       });
     } finally {
       setAnalyzing(false);

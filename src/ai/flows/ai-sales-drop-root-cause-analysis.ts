@@ -76,10 +76,28 @@ const aiSalesDropRootCauseAnalysisFlow = ai.defineFlow(
     outputSchema: AiSalesDropRootCauseAnalysisOutputSchema,
   },
   async (input) => {
-    const { output } = await prompt(input);
-    if (!output) {
-      throw new Error('AI did not return an output for root cause analysis.');
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const { output } = await prompt(input);
+        if (!output) {
+          throw new Error('AI did not return an output for root cause analysis.');
+        }
+        return output;
+      } catch (error: any) {
+        attempts++;
+        const isUnavailable = error.message?.includes('503') || error.message?.includes('UNAVAILABLE');
+        
+        if (attempts >= maxAttempts || !isUnavailable) {
+          throw error;
+        }
+        
+        // Wait 2 seconds before retrying to allow service to stabilize
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
-    return output;
+    throw new Error('AI analysis failed after multiple attempts due to high demand.');
   }
 );
