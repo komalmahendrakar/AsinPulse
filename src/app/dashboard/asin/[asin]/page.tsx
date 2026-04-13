@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingDown, ChevronLeft, AlertTriangle, Sparkles, Box, Star, Loader2, RefreshCw, MessageSquare, ShoppingCart, Store } from "lucide-react";
+import { TrendingDown, ChevronLeft, AlertTriangle, Sparkles, Box, Star, Loader2, RefreshCw, MessageSquare, ShoppingCart, Store, CheckCircle2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart as ReBarChart, Bar } from "recharts";
 import { useState, useMemo } from "react";
 import { aiSalesDropRootCauseAnalysis, type AiSalesDropRootCauseAnalysisOutput } from "@/ai/flows/ai-sales-drop-root-cause-analysis";
@@ -134,17 +134,25 @@ export default function AsinDetailsPage() {
   };
 
   const handleRunAnalysis = async () => {
+    if (!asin) return;
     setAnalyzing(true);
+    setAnalysisResult(null);
     try {
       const result = await aiSalesDropRootCauseAnalysis({
         asin: asin,
-        salesDropDetails: `Last recorded sales units: ${salesHistory?.[salesHistory.length - 1]?.units_sold || 0}.`,
-        historicalPerformance: `Price: ${formatPrice(monitoredAsin?.price) || 'N/A'}. Stock: ${monitoredAsin?.stock || 'N/A'}.`,
-        marketContext: "Analysis of Amazon India catalog signals."
+        salesDropDetails: `Current stock status: ${monitoredAsin?.stock || 'Unknown'}. Latest sales check recorded ${salesHistory?.length ? salesHistory[salesHistory.length - 1].units_sold : 'minimal'} units.`,
+        historicalPerformance: `Price: ${formatPrice(monitoredAsin?.price) || 'N/A'}. Rating: ${monitoredAsin?.rating || 'N/A'} based on ${monitoredAsin?.reviews || 0} reviews.`,
+        marketContext: "Analyzing signals within the Amazon India marketplace context."
       });
       setAnalysisResult(result);
-    } catch (error) {
+      toast({ title: "Analysis Complete", description: "AI has identified the operational root cause." });
+    } catch (error: any) {
       console.error("Analysis failed", error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Failed",
+        description: error.message || "The AI analysis encountered an error. Please check your API configuration."
+      });
     } finally {
       setAnalyzing(false);
     }
@@ -322,7 +330,11 @@ export default function AsinDetailsPage() {
               {analyzing && (
                 <div className="space-y-4 py-4 text-center">
                   <Loader2 className="h-6 w-6 animate-spin text-accent mx-auto" />
-                  <Skeleton className="h-24 w-full rounded-xl bg-accent/10" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full rounded bg-accent/10" />
+                    <Skeleton className="h-4 w-3/4 rounded bg-accent/10 mx-auto" />
+                    <Skeleton className="h-20 w-full rounded-xl bg-accent/5 mt-4" />
+                  </div>
                 </div>
               )}
 
@@ -332,7 +344,22 @@ export default function AsinDetailsPage() {
                     <h5 className="text-[10px] font-bold text-accent uppercase tracking-widest mb-3">AI Diagnostic Finding</h5>
                     <p className="text-sm leading-relaxed font-medium">{analysisResult.rootCauseSummary}</p>
                   </div>
-                  <Button variant="ghost" onClick={() => setAnalysisResult(null)} className="w-full text-xs text-muted-foreground">
+                  
+                  {analysisResult.suggestedActions && analysisResult.suggestedActions.length > 0 && (
+                    <div className="space-y-3">
+                      <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">Suggested Actions</h5>
+                      <div className="space-y-2">
+                        {analysisResult.suggestedActions.map((action, i) => (
+                          <div key={i} className="flex gap-3 p-3 rounded-xl bg-background border border-border/50 text-xs">
+                            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                            <span>{action}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <Button variant="ghost" onClick={() => setAnalysisResult(null)} className="w-full text-xs text-muted-foreground hover:text-accent">
                     Clear Analysis
                   </Button>
                 </div>
